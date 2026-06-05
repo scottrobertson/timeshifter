@@ -130,6 +130,12 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
     return;
   }
 
+  // The server generates the timeshift on the fly, so it can take a while to
+  // start. Without this, the quiet ffmpeg output makes it look frozen.
+  console.log("\nStarting… the stream can take a moment to begin.");
+  if (!config.verbose) {
+    console.log("(If it seems stuck, set VERBOSE=true to see what ffmpeg is doing.)");
+  }
   const { outputPath } = await download(config, url, window.minutes, filename);
   console.log(`\nDone: ${outputPath}`);
   await verifyDuration(outputPath, window.minutes);
