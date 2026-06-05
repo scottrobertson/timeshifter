@@ -1,16 +1,43 @@
-import { search, select, confirm } from "@inquirer/prompts";
+import { search, confirm } from "@inquirer/prompts";
 import type { Config } from "./config.js";
 import { XtreamClient, type Channel, type EpgProgram } from "./xtream.js";
 import {
   buildTimeshiftUrl,
   download,
   outputFilename,
+  probeDurationSeconds,
   recordingWindow,
 } from "./timeshift.js";
 
 function formatProgramTime(program: EpgProgram): string {
   // Trim "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM" (server-local, matches the guide).
   return program.startLocal.slice(0, 16);
+}
+
+/** Checks the finished file's length against what we asked ffmpeg to record. */
+async function verifyDuration(
+  outputPath: string,
+  expectedMinutes: number,
+): Promise<void> {
+  const actual = await probeDurationSeconds(outputPath);
+  if (actual === null) {
+    console.log("Could not read the recording's length to verify it.");
+    return;
+  }
+
+  const actualMinutes = actual / 60;
+  console.log(
+    `Recorded ${actualMinutes.toFixed(1)} min of ~${expectedMinutes} min requested.`,
+  );
+
+  // .ts durations are approximate (timestamp discontinuities), so only flag a
+  // clear shortfall rather than small differences.
+  if (actual < expectedMinutes * 60 * 0.9) {
+    console.log(
+      "⚠️  That's noticeably short. The archive may not have had the full " +
+        "program, or the stream dropped partway. Check the file before relying on it.",
+    );
+  }
 }
 
 async function pickChannel(channels: Channel[]): Promise<Channel> {
@@ -45,10 +72,13 @@ async function pickProgram(programs: EpgProgram[]): Promise<EpgProgram> {
     };
   });
 
-  const index = await select<number>({
-    message: "Pick a program to download:",
-    choices,
-    pageSize: 15,
+  const index = await search<number>({
+    message: "Pick a program to download (type to filter):",
+    source: async (input) => {
+      const term = (input ?? "").toLowerCase();
+      if (!term) return choices;
+      return choices.filter((choice) => choice.name.toLowerCase().includes(term));
+    },
   });
   return programs[index]!;
 }
@@ -101,6 +131,7 @@ async function downloadOne(config: Config, client: XtreamClient): Promise<void> 
 
   const { outputPath } = await download(config, url, minutes, filename);
   console.log(`\nDone: ${outputPath}`);
+  await verifyDuration(outputPath, minutes);
 }
 
 export async function run(config: Config): Promise<void> {

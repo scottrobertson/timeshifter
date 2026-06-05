@@ -174,3 +174,29 @@ export async function download(
 
   return { outputPath };
 }
+
+/**
+ * Reads the recorded file's duration with ffprobe. Returns seconds, or null if
+ * ffprobe isn't available or the duration can't be read. Note: for raw .ts the
+ * reported duration is approximate, since timestamp discontinuities throw it off.
+ */
+export async function probeDurationSeconds(
+  filePath: string,
+): Promise<number | null> {
+  return new Promise((resolve) => {
+    const child = spawn("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ]);
+    let out = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => (out += chunk));
+    child.on("error", () => resolve(null));
+    child.on("close", () => {
+      const seconds = Number.parseFloat(out.trim());
+      resolve(Number.isFinite(seconds) ? seconds : null);
+    });
+  });
+}
