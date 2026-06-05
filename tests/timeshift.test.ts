@@ -7,10 +7,12 @@ import {
   recordingWindow,
 } from "../src/timeshift.js";
 import type { Config } from "../src/config.js";
-import type { Channel, EpgProgram } from "../src/xtream.js";
+import type { Channel, EpgProgram } from "../src/source.js";
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
+    m3uUrl: undefined,
+    epgUrl: undefined,
     baseUrl: "http://example.com:8080",
     username: "user",
     password: "pass",
@@ -29,9 +31,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
 const channel: Channel = {
   streamId: 42,
   name: "BBC One",
-  hasArchive: true,
   archiveDays: 7,
-  categoryId: null,
 };
 
 function makeProgram(overrides: Partial<EpgProgram> = {}): EpgProgram {

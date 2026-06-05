@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { Config } from "./config.js";
-import type { Channel, EpgProgram } from "./xtream.js";
+import type { Channel, EpgProgram, RecordingWindow } from "./source.js";
 
 /**
  * Xtream timeshift wants the start time in the server's local timezone,
@@ -41,13 +41,6 @@ function shiftLocal(startLocal: string, minutesDelta: number): string {
   );
 }
 
-export interface RecordingWindow {
-  /** Server-local start (already shifted earlier by the before-padding). */
-  startLocal: string;
-  /** Total length in whole minutes, including padding. */
-  minutes: number;
-}
-
 /**
  * Recording window for a program, including padding. Caps the end at "now" so a
  * still-airing show doesn't ask for footage that doesn't exist yet.
@@ -63,6 +56,7 @@ export function recordingWindow(
   );
   const minutes = Math.max(1, Math.ceil((endMs - startMs) / 60_000));
   return {
+    start: new Date(startMs),
     startLocal: shiftLocal(program.startLocal, -config.paddingBefore),
     minutes,
   };

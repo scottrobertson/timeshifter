@@ -1,8 +1,9 @@
 import { search, confirm } from "@inquirer/prompts";
 import type { Config } from "./config.js";
-import { XtreamClient, type Channel, type EpgProgram } from "./xtream.js";
+import type { Channel, EpgProgram, Source } from "./source.js";
+import { XtreamSource } from "./xtream.js";
+import { M3uSource } from "./m3u.js";
 import {
-  buildTimeshiftUrl,
   download,
   outputFilename,
   probeDurationSeconds,
@@ -10,7 +11,7 @@ import {
 } from "./timeshift.js";
 
 function formatProgramTime(program: EpgProgram): string {
-  // Trim "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM" (server-local, matches the guide).
+  // Trim "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM".
   return program.startLocal.slice(0, 16);
 }
 
@@ -41,23 +42,21 @@ async function verifyDuration(
 }
 
 async function pickChannel(channels: Channel[]): Promise<Channel> {
-  const streamId = await search<number>({
+  const index = await search<number>({
     message: "Search for a channel (type to filter):",
     source: async (input) => {
       const term = (input ?? "").toLowerCase();
       return channels
-        .filter((c) => !term || c.name.toLowerCase().includes(term))
+        .map((channel, i) => ({ channel, i }))
+        .filter(({ channel }) => !term || channel.name.toLowerCase().includes(term))
         .slice(0, 50)
-        .map((c) => ({
-          name: `${c.name}  (${c.archiveDays}d archive)`,
-          value: c.streamId,
+        .map(({ channel, i }) => ({
+          name: `${channel.name}  (${channel.archiveDays}d archive)`,
+          value: i,
         }));
     },
   });
-
-  const channel = channels.find((c) => c.streamId === streamId);
-  if (!channel) throw new Error("Channel not found");
-  return channel;
+  return channels[index]!;
 }
 
 async function pickProgram(programs: EpgProgram[]): Promise<EpgProgram> {
@@ -83,22 +82,20 @@ async function pickProgram(programs: EpgProgram[]): Promise<EpgProgram> {
   return programs[index]!;
 }
 
-async function downloadOne(config: Config, client: XtreamClient): Promise<void> {
-  const channels = await client.getArchiveChannels();
+async function downloadOne(config: Config, source: Source): Promise<void> {
+  const channels = await source.archiveChannels();
   if (channels.length === 0) {
-    console.log("No channels with a timeshift archive were found on this account.");
+    console.log("No channels with a catchup archive were found.");
     return;
   }
   console.log(`${channels.length} channels with an archive available.\n`);
 
   const channel = await pickChannel(channels);
 
-  const epg = await client.getEpg(channel.streamId);
+  const epg = await source.programs(channel);
   const now = Date.now();
   // Only programs that have already started and are inside the archive window.
-  const downloadable = epg.filter(
-    (p) => p.hasArchive && p.start.getTime() <= now,
-  );
+  const downloadable = epg.filter((p) => p.hasArchive && p.start.getTime() <= now);
 
   if (downloadable.length === 0) {
     console.log(`No archived programs available for ${channel.name}.`);
@@ -106,8 +103,8 @@ async function downloadOne(config: Config, client: XtreamClient): Promise<void> 
   }
 
   const program = await pickProgram(downloadable);
-  const { startLocal, minutes } = recordingWindow(config, program);
-  const url = buildTimeshiftUrl(config, channel.streamId, startLocal, minutes);
+  const window = recordingWindow(config, program);
+  const url = source.catchupUrl(channel, window);
   const filename = outputFilename(config, channel, program);
 
   const padding =
@@ -119,7 +116,7 @@ async function downloadOne(config: Config, client: XtreamClient): Promise<void> 
   console.log(`  Channel:  ${channel.name}`);
   console.log(`  Program:  ${program.title}`);
   console.log(`  Start:    ${formatProgramTime(program)}`);
-  console.log(`  Length:   ${minutes} min${padding}`);
+  console.log(`  Length:   ${window.minutes} min${padding}`);
   console.log(`  Saving:   ${config.downloadDir}/${filename}`);
   console.log("");
 
@@ -129,24 +126,22 @@ async function downloadOne(config: Config, client: XtreamClient): Promise<void> 
     return;
   }
 
-  const { outputPath } = await download(config, url, minutes, filename);
+  const { outputPath } = await download(config, url, window.minutes, filename);
   console.log(`\nDone: ${outputPath}`);
-  await verifyDuration(outputPath, minutes);
+  await verifyDuration(outputPath, window.minutes);
 }
 
 export async function run(config: Config): Promise<void> {
-  const client = new XtreamClient(config);
+  const source: Source = config.m3uUrl
+    ? new M3uSource(config)
+    : new XtreamSource(config);
 
-  const account = await client.authenticate();
-  console.log(`Connected. Account status: ${account.status}`);
-  if (account.expDate) {
-    console.log(`Expires: ${account.expDate.toLocaleDateString()}`);
-  }
+  console.log(await source.connect());
   console.log("");
 
   let again = true;
   while (again) {
-    await downloadOne(config, client);
+    await downloadOne(config, source);
     again = await confirm({ message: "Download another?", default: false });
     console.log("");
   }

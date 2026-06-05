@@ -4,6 +4,10 @@ export type TimeshiftMode = "path" | "php";
 export type OutputFormat = "mp4" | "ts";
 
 export interface Config {
+  /** M3U playlist URL. When set, the playlist is used instead of the Xtream API. */
+  m3uUrl: string | undefined;
+  /** Optional XMLTV guide URL, overriding the playlist's own url-tvg link. */
+  epgUrl: string | undefined;
   baseUrl: string;
   username: string;
   password: string;
@@ -49,7 +53,19 @@ function nonNegativeInt(name: string): number {
 }
 
 export function loadConfig(): Config {
-  const baseUrl = required("IPTV_URL").replace(/\/+$/, "");
+  const m3uUrl = process.env.M3U_URL?.trim() || undefined;
+
+  // You configure either an M3U URL, or the Xtream API details.
+  if (!m3uUrl && !process.env.IPTV_URL?.trim()) {
+    throw new Error(
+      "Set either M3U_URL, or IPTV_URL + IPTV_USERNAME + IPTV_PASSWORD. See .env.example.",
+    );
+  }
+
+  // Xtream details are only required when not using an M3U.
+  const baseUrl = m3uUrl ? "" : required("IPTV_URL").replace(/\/+$/, "");
+  const username = m3uUrl ? "" : required("IPTV_USERNAME");
+  const password = m3uUrl ? "" : required("IPTV_PASSWORD");
 
   const outputFormat = (process.env.OUTPUT_FORMAT?.trim() ||
     "ts") as OutputFormat;
@@ -66,9 +82,11 @@ export function loadConfig(): Config {
   }
 
   return {
+    m3uUrl,
+    epgUrl: process.env.EPG_URL?.trim() || undefined,
     baseUrl,
-    username: required("IPTV_USERNAME"),
-    password: required("IPTV_PASSWORD"),
+    username,
+    password,
     downloadDir: process.env.DOWNLOAD_DIR?.trim() || "downloads",
     outputFormat,
     userAgent: process.env.IPTV_USER_AGENT?.trim() || undefined,
