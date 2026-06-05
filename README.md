@@ -27,6 +27,26 @@ docker run -it --rm \
   ghcr.io/scottrobertson/timeshifter:latest
 ```
 
+Or with Docker Compose. Because it's an interactive CLI, use `run` (not `up`):
+
+```yaml
+services:
+  timeshifter:
+    image: ghcr.io/scottrobertson/timeshifter:latest
+    environment:
+      IPTV_URL: http://my-provider.com:8080
+      IPTV_USERNAME: your-username
+      IPTV_PASSWORD: your-password
+    volumes:
+      - ./downloads:/downloads
+    stdin_open: true
+    tty: true
+```
+
+```
+docker compose run --rm timeshifter
+```
+
 ## Run manually
 
 Needs Node 20+ and [ffmpeg](https://ffmpeg.org/download.html) on your PATH:
