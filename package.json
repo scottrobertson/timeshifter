@@ -1,0 +1,23 @@
+{
+  "name": "timeshifter",
+  "version": "0.1.0",
+  "description": "Download timeshifted (catchup) recordings from an Xtream Codes IPTV provider by picking a show from the EPG.",
+  "type": "module",
+  "bin": {
+    "timeshifter": "src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.2.1",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
