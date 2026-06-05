@@ -3,5 +3,6 @@
   "compilerOptions": {
     "noEmit": false,
     "outDir": "dist"
-  }
+  },
+  "include": ["src"]
 }

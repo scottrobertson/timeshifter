@@ -1,0 +1,167 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import {
+  buildTimeshiftUrl,
+  formatStartForUrl,
+  outputFilename,
+  recordingWindow,
+} from "../src/timeshift.js";
+import type { Config } from "../src/config.js";
+import type { Channel, EpgProgram } from "../src/xtream.js";
+
+function makeConfig(overrides: Partial<Config> = {}): Config {
+  return {
+    baseUrl: "http://example.com:8080",
+    username: "user",
+    password: "pass",
+    downloadDir: "downloads",
+    outputFormat: "ts",
+    userAgent: undefined,
+    timeshiftMode: "path",
+    paddingBefore: 0,
+    paddingAfter: 0,
+    filenameTemplate: "{channel} - {title} - {datetime}.{ext}",
+    verbose: false,
+    ...overrides,
+  };
+}
+
+const channel: Channel = {
+  streamId: 42,
+  name: "BBC One",
+  hasArchive: true,
+  archiveDays: 7,
+  categoryId: null,
+};
+
+function makeProgram(overrides: Partial<EpgProgram> = {}): EpgProgram {
+  return {
+    title: "Some Show",
+    description: "",
+    // 2024 so recordingWindow never caps the end at "now".
+    start: new Date(Date.UTC(2024, 2, 10, 12, 0, 0)),
+    end: new Date(Date.UTC(2024, 2, 10, 13, 0, 0)),
+    startLocal: "2024-03-10 12:00:00",
+    hasArchive: true,
+    ...overrides,
+  };
+}
+
+describe("formatStartForUrl", () => {
+  it("reformats to YYYY-MM-DD:HH-MM", () => {
+    assert.equal(formatStartForUrl("2024-03-10 12:00:00"), "2024-03-10:12-00");
+  });
+
+  it("drops the seconds", () => {
+    assert.equal(formatStartForUrl("2024-03-10 09:05:30"), "2024-03-10:09-05");
+  });
+
+  it("throws when there is no time part", () => {
+    assert.throws(() => formatStartForUrl("2024-03-10"));
+  });
+});
+
+describe("recordingWindow", () => {
+  it("uses the program length when there is no padding", () => {
+    const window = recordingWindow(makeConfig(), makeProgram());
+    assert.equal(window.minutes, 60);
+    assert.equal(window.startLocal, "2024-03-10 12:00:00");
+  });
+
+  it("adds padding before and after", () => {
+    const window = recordingWindow(
+      makeConfig({ paddingBefore: 2, paddingAfter: 5 }),
+      makeProgram(),
+    );
+    assert.equal(window.minutes, 67);
+    assert.equal(window.startLocal, "2024-03-10 11:58:00");
+  });
+
+  it("rolls back across midnight when the before-padding crosses a day", () => {
+    const program = makeProgram({
+      start: new Date(Date.UTC(2024, 2, 10, 0, 1, 0)),
+      end: new Date(Date.UTC(2024, 2, 10, 0, 31, 0)),
+      startLocal: "2024-03-10 00:01:00",
+    });
+    const window = recordingWindow(
+      makeConfig({ paddingBefore: 5, paddingAfter: 5 }),
+      program,
+    );
+    assert.equal(window.startLocal, "2024-03-09 23:56:00");
+    assert.equal(window.minutes, 40);
+  });
+});
+
+describe("buildTimeshiftUrl", () => {
+  it("builds a path-style URL", () => {
+    const url = buildTimeshiftUrl(makeConfig(), 42, "2024-03-10 12:00:00", 60);
+    assert.equal(
+      url,
+      "http://example.com:8080/timeshift/user/pass/60/2024-03-10:12-00/42.ts",
+    );
+  });
+
+  it("url-encodes the username and password", () => {
+    const url = buildTimeshiftUrl(
+      makeConfig({ username: "a b", password: "p/@" }),
+      42,
+      "2024-03-10 12:00:00",
+      60,
+    );
+    assert.equal(
+      url,
+      "http://example.com:8080/timeshift/a%20b/p%2F%40/60/2024-03-10:12-00/42.ts",
+    );
+  });
+
+  it("builds a php-style URL", () => {
+    const url = buildTimeshiftUrl(
+      makeConfig({ timeshiftMode: "php" }),
+      42,
+      "2024-03-10 12:00:00",
+      60,
+    );
+    assert.equal(
+      url,
+      "http://example.com:8080/streaming/timeshift.php?username=user&password=pass&stream=42&start=2024-03-10%3A12-00&duration=60",
+    );
+  });
+});
+
+describe("outputFilename", () => {
+  it("fills the default template", () => {
+    const name = outputFilename(
+      makeConfig(),
+      channel,
+      makeProgram({ title: "The Show", startLocal: "2024-03-10 21:30:00" }),
+    );
+    assert.equal(name, "BBC One - The Show - 2024-03-10_21-30.ts");
+  });
+
+  it("sanitises illegal characters in the channel and title", () => {
+    const name = outputFilename(
+      makeConfig(),
+      { ...channel, name: "Sky/Sports" },
+      makeProgram({ title: "Race: Part 1", startLocal: "2024-03-10 21:30:00" }),
+    );
+    assert.equal(name, "Sky-Sports - Race- Part 1 - 2024-03-10_21-30.ts");
+  });
+
+  it("supports subfolders and a custom extension", () => {
+    const name = outputFilename(
+      makeConfig({ filenameTemplate: "{channel}/{title}.{ext}", outputFormat: "mp4" }),
+      channel,
+      makeProgram({ title: "The Show" }),
+    );
+    assert.equal(name, "BBC One/The Show.mp4");
+  });
+
+  it("leaves unknown tokens untouched", () => {
+    const name = outputFilename(
+      makeConfig({ filenameTemplate: "{channel} {bogus}" }),
+      channel,
+      makeProgram(),
+    );
+    assert.equal(name, "BBC One {bogus}");
+  });
+});
