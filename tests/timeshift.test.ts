@@ -11,8 +11,6 @@ import type { Channel, EpgProgram } from "../src/source.js";
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
-    m3uUrl: undefined,
-    epgUrl: undefined,
     baseUrl: "http://example.com:8080",
     username: "user",
     password: "pass",

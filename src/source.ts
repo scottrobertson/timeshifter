@@ -1,5 +1,6 @@
 // A "source" is wherever we get channels, the guide, and the catchup URL from.
-// There are two: the Xtream Codes API, and a plain M3U playlist + XMLTV guide.
+// Today that's the Xtream Codes API; the interface leaves room for others (e.g.
+// an M3U playlist) without the CLI needing to change.
 
 export interface Channel {
   name: string;
@@ -8,12 +9,6 @@ export interface Channel {
 
   // Xtream sources identify a channel by its stream id.
   streamId?: number;
-
-  // M3U sources carry the playlist entry's details.
-  tvgId?: string;
-  streamUrl?: string;
-  catchupType?: string;
-  catchupSource?: string;
 }
 
 export interface EpgProgram {
@@ -28,8 +23,6 @@ export interface EpgProgram {
 }
 
 export interface RecordingWindow {
-  /** Absolute start, after the before-padding has been applied. */
-  start: Date;
   /** Local start string, after the before-padding (for path-style URLs). */
   startLocal: string;
   /** Total length in whole minutes, including padding. */

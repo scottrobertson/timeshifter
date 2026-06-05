@@ -56,7 +56,6 @@ export function recordingWindow(
   );
   const minutes = Math.max(1, Math.ceil((endMs - startMs) / 60_000));
   return {
-    start: new Date(startMs),
     startLocal: shiftLocal(program.startLocal, -config.paddingBefore),
     minutes,
   };

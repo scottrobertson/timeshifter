@@ -2,7 +2,6 @@ import { search, confirm } from "@inquirer/prompts";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
-import { M3uSource } from "./m3u.js";
 import {
   download,
   outputFilename,
@@ -132,9 +131,7 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
 }
 
 export async function run(config: Config): Promise<void> {
-  const source: Source = config.m3uUrl
-    ? new M3uSource(config)
-    : new XtreamSource(config);
+  const source: Source = new XtreamSource(config);
 
   console.log(await source.connect());
   console.log("");
