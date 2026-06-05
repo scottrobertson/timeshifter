@@ -1,5 +1,5 @@
 # Build stage: compile TypeScript to plain JS using the full dev toolchain.
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -8,7 +8,7 @@ COPY src ./src
 RUN npm run build
 
 # Runtime stage: only ffmpeg, node, prod deps and the compiled output.
-FROM node:24-alpine
+FROM node:26-alpine
 # tini runs as PID 1 and forwards signals, so Ctrl-C works (node as PID 1 doesn't).
 RUN apk add --no-cache ffmpeg tini
 WORKDIR /app
