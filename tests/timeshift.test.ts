@@ -1,10 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   buildTimeshiftUrl,
   formatStartForUrl,
   outputFilename,
   recordingWindow,
+  setFileTime,
 } from "../src/timeshift.js";
 import type { Config } from "../src/config.js";
 import type { Channel, EpgProgram } from "../src/source.js";
@@ -22,6 +26,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     paddingAfter: 0,
     filenameTemplate: "{channel} - {title} - {datetime}.{ext}",
     verbose: false,
+    setAiredTime: true,
     ...overrides,
   };
 }
@@ -161,5 +166,19 @@ describe("outputFilename", () => {
       makeProgram(),
     );
     assert.equal(name, "BBC One {bogus}");
+  });
+});
+
+describe("setFileTime", () => {
+  it("sets the file's modified time", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const file = path.join(dir, "recording.ts");
+    await writeFile(file, "x");
+
+    const aired = new Date(Date.UTC(2024, 2, 10, 13, 0, 0));
+    await setFileTime(file, aired);
+
+    const stats = await stat(file);
+    assert.equal(stats.mtime.getTime(), aired.getTime());
   });
 });

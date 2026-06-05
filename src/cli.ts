@@ -7,6 +7,7 @@ import {
   outputFilename,
   probeDurationSeconds,
   recordingWindow,
+  setFileTime,
 } from "./timeshift.js";
 
 function formatProgramTime(program: EpgProgram): string {
@@ -128,6 +129,16 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
   const { outputPath } = await download(config, url, window.minutes, filename);
   console.log(`\nDone: ${outputPath}`);
   await verifyDuration(outputPath, window.minutes);
+
+  // Set the file's time to when the show aired, so it sorts by air date in a
+  // media library rather than by when it was downloaded.
+  if (config.setAiredTime) {
+    try {
+      await setFileTime(outputPath, program.end);
+    } catch {
+      console.log("Could not set the file's time to the air time.");
+    }
+  }
 }
 
 export async function run(config: Config): Promise<void> {

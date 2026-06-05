@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, utimes } from "node:fs/promises";
 import path from "node:path";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, RecordingWindow } from "./source.js";
@@ -198,4 +198,9 @@ export async function probeDurationSeconds(
       resolve(Number.isFinite(seconds) ? seconds : null);
     });
   });
+}
+
+/** Set a file's modified (and access) time, e.g. to when a program aired. */
+export async function setFileTime(filePath: string, when: Date): Promise<void> {
+  await utimes(filePath, when, when);
 }

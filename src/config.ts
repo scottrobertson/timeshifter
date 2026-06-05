@@ -19,6 +19,8 @@ export interface Config {
   filenameTemplate: string;
   /** Show ffmpeg's full raw output instead of a clean progress line. */
   verbose: boolean;
+  /** Set the downloaded file's modified time to when the program aired. */
+  setAiredTime: boolean;
 }
 
 const DEFAULT_FILENAME_TEMPLATE = "{channel} - {title} - {datetime}.{ext}";
@@ -33,9 +35,12 @@ function required(name: string): string {
   return value;
 }
 
-function boolean(name: string): boolean {
+function boolean(name: string, fallback = false): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes";
+  if (!raw) return fallback;
+  if (raw === "1" || raw === "true" || raw === "yes") return true;
+  if (raw === "0" || raw === "false" || raw === "no") return false;
+  return fallback;
 }
 
 function nonNegativeInt(name: string): number {
@@ -80,5 +85,6 @@ export function loadConfig(): Config {
     filenameTemplate:
       process.env.FILENAME_TEMPLATE?.trim() || DEFAULT_FILENAME_TEMPLATE,
     verbose: boolean("VERBOSE"),
+    setAiredTime: boolean("SET_AIRED_TIME", true),
   };
 }

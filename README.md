@@ -44,6 +44,7 @@ npm start
 - **Padding:** set `PADDING_BEFORE_MINUTES` / `PADDING_AFTER_MINUTES` to start a bit early and run a bit long, in case the guide times are off. A still-airing show's end padding is capped at "now".
 - **Filename:** set `FILENAME_TEMPLATE` to control how files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to `{channel} - {title} - {datetime}.{ext}`.
 - **ffmpeg warnings during download:** lines like `non-existing PPS`, `no frame!`, `Packet corrupt` and `timestamp discontinuity` are normal here. Catchup streams aren't perfectly clean, so ffmpeg logs these warnings while it copies the recording, but the file is fine. By default these are hidden behind a clean progress line; set `VERBOSE=true` to see ffmpeg's full output. The duration check at the end is the real test of whether the recording is complete.
+- **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `SET_AIRED_TIME=false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
 - **Times** shown in the guide are the provider's local time, which is what the timeshift URL needs, so no timezone conversion is done.
 
 ## Built with Claude
