@@ -107,17 +107,21 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
   const url = source.catchupUrl(channel, window);
   const filename = outputFilename(config, channel, program);
 
-  const padding =
+  const programMinutes = Math.round(
+    (program.end.getTime() - program.start.getTime()) / 60_000,
+  );
+  const paddingText =
     config.paddingBefore || config.paddingAfter
-      ? `  (+${config.paddingBefore} before / +${config.paddingAfter} after)`
-      : "";
+      ? `${config.paddingBefore} min before, ${config.paddingAfter} min after`
+      : "none";
 
   console.log("");
-  console.log(`  Channel:  ${channel.name}`);
-  console.log(`  Program:  ${program.title}`);
-  console.log(`  Start:    ${formatProgramTime(program)}`);
-  console.log(`  Length:   ${window.minutes} min${padding}`);
-  console.log(`  Saving:   ${config.downloadDir}/${filename}`);
+  console.log(`  Channel:    ${channel.name}`);
+  console.log(`  Program:    ${program.title}`);
+  console.log(`  Aired:      ${formatProgramTime(program)}  (${programMinutes} min)`);
+  console.log(`  Padding:    ${paddingText}`);
+  console.log(`  Recording:  ${window.minutes} min from ${window.startLocal.slice(0, 16)}`);
+  console.log(`  Saving:     ${config.downloadDir}/${filename}`);
   console.log("");
 
   const go = await confirm({ message: "Download this?", default: true });
