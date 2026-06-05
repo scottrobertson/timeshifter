@@ -9,7 +9,8 @@ RUN npm run build
 
 # Runtime stage: only ffmpeg, node, prod deps and the compiled output.
 FROM node:24-alpine
-RUN apk add --no-cache ffmpeg
+# tini runs as PID 1 and forwards signals, so Ctrl-C works (node as PID 1 doesn't).
+RUN apk add --no-cache ffmpeg tini
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DOWNLOAD_DIR=/downloads
@@ -20,4 +21,4 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 
 VOLUME ["/downloads"]
-ENTRYPOINT ["node", "dist/index.js"]
+ENTRYPOINT ["/sbin/tini", "--", "node", "dist/index.js"]
