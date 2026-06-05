@@ -93,6 +93,17 @@ describe("recordingWindow", () => {
     assert.equal(window.startLocal, "2024-03-09 23:56:00");
     assert.equal(window.minutes, 40);
   });
+
+  it("caps the end at now for a still-airing program", () => {
+    const now = Date.now();
+    const program = makeProgram({
+      start: new Date(now - 10 * 60_000), // started 10 minutes ago
+      end: new Date(now + 60 * 60_000), // ends in an hour
+    });
+    // Without the cap this would be ~100 min; capped at "now" it's about 10.
+    const window = recordingWindow(makeConfig({ paddingAfter: 30 }), program);
+    assert.ok(window.minutes >= 9 && window.minutes <= 12, `got ${window.minutes}`);
+  });
 });
 
 describe("buildTimeshiftUrl", () => {
