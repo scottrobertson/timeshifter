@@ -17,6 +17,8 @@ export interface Config {
   paddingAfter: number;
   /** Output filename template. Supports {channel} {title} {date} {time} {datetime} {ext}. */
   filenameTemplate: string;
+  /** Show ffmpeg's full raw output instead of a clean progress line. */
+  verbose: boolean;
 }
 
 const DEFAULT_FILENAME_TEMPLATE = "{channel} - {title} - {datetime}.{ext}";
@@ -29,6 +31,11 @@ function required(name: string): string {
     );
   }
   return value;
+}
+
+function boolean(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
 }
 
 function nonNegativeInt(name: string): number {
@@ -70,5 +77,6 @@ export function loadConfig(): Config {
     paddingAfter: nonNegativeInt("PADDING_AFTER_MINUTES"),
     filenameTemplate:
       process.env.FILENAME_TEMPLATE?.trim() || DEFAULT_FILENAME_TEMPLATE,
+    verbose: boolean("VERBOSE"),
   };
 }

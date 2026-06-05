@@ -140,7 +140,13 @@ export async function download(
   await mkdir(path.dirname(outputPath), { recursive: true });
   const seconds = minutes * 60;
 
-  const args = ["-hide_banner", "-loglevel", "info", "-stats"];
+  // Both modes hand ffmpeg's output straight to the terminal. Verbose shows
+  // everything; clean mode stays quiet apart from ffmpeg's own progress line
+  // (-stats prints regardless of log level), which hides the harmless TS noise.
+  const args = config.verbose
+    ? ["-hide_banner", "-loglevel", "info", "-stats"]
+    : ["-hide_banner", "-loglevel", "quiet", "-stats"];
+
   if (config.userAgent) args.push("-user_agent", config.userAgent);
   // Survive brief network hiccups during the recording.
   args.push(
