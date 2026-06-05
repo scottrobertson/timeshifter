@@ -95,12 +95,11 @@ final image ships only ffmpeg, node, the production deps and the compiled JS.
   shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to
   `{channel} - {title} - {datetime}.{ext}`.
 - **ffmpeg warnings during download:** lines like `non-existing PPS`, `no frame!`,
-  `Packet corrupt` and `timestamp discontinuity` are normal for timeshift TS
-  streams. You join the stream mid-GOP and the provider stitches archive segments
-  together, so the timestamps jump and the odd packet is corrupt. ffmpeg copies
-  through it. By default these are hidden behind a clean progress line; set
-  `VERBOSE=true` to see ffmpeg's full output. The duration check at the end is the
-  real test of whether the recording is complete.
+  `Packet corrupt` and `timestamp discontinuity` are normal here. Catchup streams
+  aren't perfectly clean, so ffmpeg logs these warnings while it copies the
+  recording, but the file is fine. By default these are hidden behind a clean
+  progress line; set `VERBOSE=true` to see ffmpeg's full output. The duration
+  check at the end is the real test of whether the recording is complete.
 - **Times** shown in the guide are the provider's local time, which is what the
   timeshift URL needs, so no timezone conversion is done.
 - M3U-only providers aren't supported here. The EPG + timeshift flow needs the
