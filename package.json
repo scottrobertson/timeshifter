@@ -13,7 +13,7 @@
     "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.2.1",
+    "@inquirer/prompts": "^8.5.2",
     "dotenv": "^16.4.7"
   },
   "devDependencies": {
