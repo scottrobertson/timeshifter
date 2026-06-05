@@ -6,76 +6,43 @@ to a file so you can grab anything you missed.
 
 ## How it works
 
-Xtream Codes providers expose a catchup archive for some channels (usually a few
-days back). This tool:
-
-1. Authenticates against the provider's `player_api.php`.
-2. Lists channels that have an archive.
-3. Pulls the EPG (guide) for the channel you pick.
-4. Works out the start time and length of the show you choose, builds the
-   timeshift URL, and records it with ffmpeg.
-
-## Requirements
-
-- Node 20+ (built on 24).
-- [ffmpeg](https://ffmpeg.org/) on your PATH for the download step:
-  ```
-  brew install ffmpeg
-  ```
+Most Xtream Codes providers keep a catchup archive for some channels, usually a
+few days back. You pick a channel, pick a past show from the guide, and it
+downloads that show into `./downloads`.
 
 ## Setup
 
+Create your `.env`:
+
 ```
-npm install
 cp .env.example .env
 ```
 
-Fill in `.env` with your provider's base URL (including port), username and
-password. See `.env.example` for the optional settings.
+Fill in your provider's base URL (including port), username and password. See
+`.env.example` for the optional settings.
 
-## Usage
+## Run with Docker (recommended)
 
-```
-npm start
-```
-
-You'll get:
-
-1. A searchable list of channels that have an archive.
-2. A list of past shows from that channel's guide.
-3. A confirmation, then ffmpeg records the show into `./downloads`.
-
-When it finishes it runs `ffprobe` on the file and prints the recorded length,
-warning if it came out noticeably shorter than requested.
-
-## Docker
-
-The image bundles ffmpeg, so you don't need it installed locally.
-
-Pull the prebuilt image (published to GHCR on every push to `main`):
-
-```
-docker pull ghcr.io/scottrobertson/timeshifter:latest
-```
-
-Or build it yourself:
-
-```
-docker build -t timeshifter .
-```
-
+A prebuilt image with ffmpeg already bundled, so there's nothing else to install.
 It's an interactive CLI, so run it with `-it`, pass your `.env`, and mount a
-folder for the downloads (the image writes to `/downloads`):
+folder for the downloads:
 
 ```
 docker run -it --rm \
   --env-file .env \
   -v "$(pwd)/downloads:/downloads" \
-  timeshifter
+  ghcr.io/scottrobertson/timeshifter:latest
 ```
 
-Multi-stage build on Alpine: TypeScript is compiled in a builder stage and the
-final image ships only ffmpeg, node, the production deps and the compiled JS.
+## Run manually
+
+Needs Node 20+ and [ffmpeg](https://ffmpeg.org/) on your PATH
+(`brew install ffmpeg`):
+
+```
+npm install
+npm start
+```
 
 ## Notes / troubleshooting
 
