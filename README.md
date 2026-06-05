@@ -1,14 +1,9 @@
 # timeshifter
 
-Download timeshift (catchup) recordings from an Xtream Codes IPTV provider. You
-pick a channel and a past show from the program guide, and it records that show
-to a file so you can grab anything you missed.
-
-## How it works
-
-Most Xtream Codes providers keep a catchup archive for some channels, usually a
-few days back. You pick a channel, pick a past show from the guide, and it
-downloads that show into `./downloads`.
+Download timeshift (catchup) recordings from an Xtream Codes IPTV provider. Most
+providers keep a catchup archive for some channels, usually a few days back. You
+pick a channel and a past show from the guide, and it downloads that show into
+`./downloads` so you can grab anything you missed.
 
 ## Setup
 
