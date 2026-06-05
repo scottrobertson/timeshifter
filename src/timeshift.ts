@@ -141,10 +141,11 @@ export async function download(
     : ["-hide_banner", "-loglevel", "quiet", "-stats"];
 
   if (config.userAgent) args.push("-user_agent", config.userAgent);
-  // Survive brief network hiccups during the recording.
+  // IPTV servers often drop the connection mid-stream; reconnect and resume.
   args.push(
     "-reconnect", "1",
     "-reconnect_streamed", "1",
+    "-reconnect_on_network_error", "1",
     "-reconnect_delay_max", "5",
     "-i", url,
     "-t", String(seconds),
