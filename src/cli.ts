@@ -116,8 +116,7 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
     return;
   }
 
-  // The server generates the timeshift on the fly, so it can take a moment to start.
-  console.log("\nStarting… the stream can take a moment to begin.");
+  console.log(""); // blank line above the progress bar
   const result = await download(config, url, filename);
   console.log(`\nDone: ${result.outputPath}`);
   reportSize(result);
