@@ -15,7 +15,7 @@ For now it works with Xtream Codes providers (the most common kind, where you lo
 - Stamps each file with the show's air time, so it sorts by air date in your media library.
 - Live progress with download speed and ETA.
 - Saves as `.ts`, which plays in VLC, Plex, Emby and Jellyfin. No transcoding, so it's quick.
-- Runs with Docker or Node, nothing else to install.
+- Runs as a Docker image (ffmpeg bundled), or directly with Node and ffmpeg.
 
 ## Setup
 
