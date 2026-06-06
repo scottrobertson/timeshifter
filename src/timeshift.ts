@@ -151,14 +151,15 @@ export async function download(
   }
   const expectedBytes = Number(response.headers.get("content-length")) || null;
 
+  const startedAt = Date.now();
   let bytesDownloaded = 0;
   let lastRender = 0;
   const counter = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       bytesDownloaded += chunk.length;
       const now = Date.now();
-      if (now - lastRender >= 500) {
-        renderDownloadProgress(bytesDownloaded, expectedBytes);
+      if (now - lastRender >= 250) {
+        renderDownloadProgress(bytesDownloaded, expectedBytes, startedAt);
         lastRender = now;
       }
       callback(null, chunk);
@@ -178,20 +179,45 @@ export async function download(
       throw err;
     }
   }
-  renderDownloadProgress(bytesDownloaded, expectedBytes);
+  renderDownloadProgress(bytesDownloaded, expectedBytes, startedAt);
   process.stdout.write("\n");
 
   return { outputPath, bytesDownloaded, expectedBytes };
 }
 
-function renderDownloadProgress(downloaded: number, total: number | null): void {
-  const mb = (n: number) => (n / 1_000_000).toFixed(0);
-  if (total) {
-    const pct = Math.min(100, Math.floor((downloaded / total) * 100));
-    process.stdout.write(`\r  Downloaded ${mb(downloaded)} / ${mb(total)} MB (${pct}%)   `);
-  } else {
-    process.stdout.write(`\r  Downloaded ${mb(downloaded)} MB   `);
+function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m${String(s % 60).padStart(2, "0")}s`;
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m`;
+}
+
+function renderDownloadProgress(
+  downloaded: number,
+  total: number | null,
+  startedAt: number,
+): void {
+  const gb = (n: number) => (n / 1e9).toFixed(2);
+  const elapsed = Math.max(0.001, (Date.now() - startedAt) / 1000);
+  const speed = downloaded / elapsed; // bytes/sec
+  const speedText = `${(speed / 1e6).toFixed(0)} MB/s`;
+
+  if (!total) {
+    process.stdout.write(`\r  ${gb(downloaded)} GB  ${speedText}   `);
+    return;
   }
+
+  const fraction = Math.min(1, downloaded / total);
+  const width = 28;
+  const filled = Math.round(fraction * width);
+  const bar = "█".repeat(filled) + "░".repeat(width - filled);
+  const pct = String(Math.floor(fraction * 100)).padStart(3);
+  const eta = speed > 0 ? formatDuration((total - downloaded) / speed) : "—";
+
+  process.stdout.write(
+    `\r  ${bar} ${pct}%  ${gb(downloaded)}/${gb(total)} GB  ${speedText}  ETA ${eta}   `,
+  );
 }
 
 /** Set a file's modified (and access) time, e.g. to when a program aired. */
