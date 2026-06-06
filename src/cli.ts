@@ -106,7 +106,7 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
   console.log(`  Program:    ${program.title}`);
   console.log(`  Aired:      ${formatProgramTime(program)}  (${programMinutes} min)`);
   console.log(`  Padding:    ${paddingText}`);
-  console.log(`  Recording:  ${window.minutes} min from ${window.startLocal.slice(0, 16)}`);
+  console.log(`  Length:     ${window.minutes} min`);
   console.log(`  Saving:     ${config.downloadDir}/${filename}`);
   console.log("");
 

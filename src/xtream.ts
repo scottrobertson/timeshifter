@@ -115,11 +115,6 @@ export class XtreamSource implements Source {
   }
 
   catchupUrl(channel: Channel, window: RecordingWindow): string {
-    return buildTimeshiftUrl(
-      this.config,
-      channel.streamId!,
-      window.startLocal,
-      window.minutes,
-    );
+    return buildTimeshiftUrl(this.config, channel.streamId!, window.start, window.minutes);
   }
 }

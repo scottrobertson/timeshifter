@@ -23,8 +23,8 @@ export interface EpgProgram {
 }
 
 export interface RecordingWindow {
-  /** Local start string, after the before-padding (for path-style URLs). */
-  startLocal: string;
+  /** Absolute (UTC) start instant, after the before-padding has been applied. */
+  start: Date;
   /** Total length in whole minutes, including padding. */
   minutes: number;
 }

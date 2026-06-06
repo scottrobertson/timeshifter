@@ -64,7 +64,7 @@ npm start
 - **Padding:** set `PADDING_BEFORE_MINUTES` / `PADDING_AFTER_MINUTES` to start a bit early and run a bit long, in case the guide times are off. A still-airing show's end padding is capped at "now".
 - **Filename:** set `FILENAME_TEMPLATE` to control how files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to `{channel} - {title} - {datetime}.{ext}`.
 - **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `SET_AIRED_TIME=false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
-- **Times** shown in the guide are the provider's local time, which is what the timeshift URL needs, so no timezone conversion is done.
+- **Times** in the guide and filenames are shown in the provider's local time (what you'd expect). The timeshift URL itself is built in UTC, since that's what the endpoint expects, get this wrong and you'd record the wrong hour.
 
 ## Built with Claude
 
