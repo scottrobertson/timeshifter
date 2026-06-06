@@ -1,10 +1,11 @@
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   buildTimeshiftUrl,
+  download,
   formatStartForUrl,
   outputFilename,
   recordingWindow,
@@ -19,13 +20,11 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     username: "user",
     password: "pass",
     downloadDir: "downloads",
-    outputFormat: "ts",
     userAgent: undefined,
     timeshiftMode: "path",
     paddingBefore: 0,
     paddingAfter: 0,
     filenameTemplate: "{channel} - {title} - {datetime}.{ext}",
-    verbose: false,
     setAiredTime: true,
     ...overrides,
   };
@@ -161,13 +160,13 @@ describe("outputFilename", () => {
     assert.equal(name, "Sky-Sports - Race- Part 1 - 2024-03-10_21-30.ts");
   });
 
-  it("supports subfolders and a custom extension", () => {
+  it("supports subfolders", () => {
     const name = outputFilename(
-      makeConfig({ filenameTemplate: "{channel}/{title}.{ext}", outputFormat: "mp4" }),
+      makeConfig({ filenameTemplate: "{channel}/{title}.{ext}" }),
       channel,
       makeProgram({ title: "The Show" }),
     );
-    assert.equal(name, "BBC One/The Show.mp4");
+    assert.equal(name, "BBC One/The Show.ts");
   });
 
   it("leaves unknown tokens untouched", () => {
@@ -191,5 +190,31 @@ describe("setFileTime", () => {
 
     const stats = await stat(file);
     assert.equal(stats.mtime.getTime(), aired.getTime());
+  });
+});
+
+describe("download", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it("streams the response body to a file", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const data = Buffer.from("a recording's worth of bytes");
+    globalThis.fetch = (async () =>
+      new Response(data, {
+        headers: { "content-length": String(data.length) },
+      })) as unknown as typeof globalThis.fetch;
+
+    const result = await download(
+      makeConfig({ downloadDir: dir }),
+      "http://example.com/x.ts",
+      "out.ts",
+    );
+
+    assert.equal(result.bytesDownloaded, data.length);
+    assert.equal(result.expectedBytes, data.length);
+    assert.equal((await readFile(path.join(dir, "out.ts"))).toString(), data.toString());
   });
 });

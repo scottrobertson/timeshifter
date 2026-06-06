@@ -5,9 +5,9 @@ import { XtreamSource } from "./xtream.js";
 import {
   download,
   outputFilename,
-  probeDurationSeconds,
   recordingWindow,
   setFileTime,
+  type DownloadResult,
 } from "./timeshift.js";
 
 function formatProgramTime(program: EpgProgram): string {
@@ -15,28 +15,14 @@ function formatProgramTime(program: EpgProgram): string {
   return program.startLocal.slice(0, 16);
 }
 
-/** Checks the finished file's length against what we asked ffmpeg to record. */
-async function verifyDuration(
-  outputPath: string,
-  expectedMinutes: number,
-): Promise<void> {
-  const actual = await probeDurationSeconds(outputPath);
-  if (actual === null) {
-    console.log("Could not read the recording's length to verify it.");
-    return;
-  }
-
-  const actualMinutes = actual / 60;
-  console.log(
-    `Recorded ${actualMinutes.toFixed(1)} min of ~${expectedMinutes} min requested.`,
-  );
-
-  // .ts durations are approximate (timestamp discontinuities), so only flag a
-  // clear shortfall rather than small differences.
-  if (actual < expectedMinutes * 60 * 0.9) {
+/** Reports the downloaded size and warns if it came up well short of expected. */
+function reportSize(result: DownloadResult): void {
+  const mb = (result.bytesDownloaded / 1_000_000).toFixed(0);
+  console.log(`Downloaded ${mb} MB.`);
+  if (result.expectedBytes && result.bytesDownloaded < result.expectedBytes * 0.99) {
+    const expectedMb = (result.expectedBytes / 1_000_000).toFixed(0);
     console.log(
-      "⚠️  That's noticeably short. The archive may not have had the full " +
-        "program, or the stream dropped partway. Check the file before relying on it.",
+      `⚠️  Expected about ${expectedMb} MB, so this may be incomplete. Check the file before relying on it.`,
     );
   }
 }
@@ -130,21 +116,17 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
     return;
   }
 
-  // The server generates the timeshift on the fly, so it can take a while to
-  // start. Without this, the quiet ffmpeg output makes it look frozen.
+  // The server generates the timeshift on the fly, so it can take a moment to start.
   console.log("\nStarting… the stream can take a moment to begin.");
-  if (!config.verbose) {
-    console.log("(If it seems stuck, set VERBOSE=true to see what ffmpeg is doing.)");
-  }
-  const { outputPath } = await download(config, url, window.minutes, filename);
-  console.log(`\nDone: ${outputPath}`);
-  await verifyDuration(outputPath, window.minutes);
+  const result = await download(config, url, filename);
+  console.log(`\nDone: ${result.outputPath}`);
+  reportSize(result);
 
   // Set the file's time to when the show aired, so it sorts by air date in a
   // media library rather than by when it was downloaded.
   if (config.setAiredTime) {
     try {
-      await setFileTime(outputPath, program.end);
+      await setFileTime(result.outputPath, program.end);
     } catch {
       console.log("Could not set the file's time to the air time.");
     }

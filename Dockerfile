@@ -7,10 +7,10 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 
-# Runtime stage: only ffmpeg, node, prod deps and the compiled output.
+# Runtime stage: node, prod deps and the compiled output.
 FROM node:26-alpine
 # tini runs as PID 1 and forwards signals, so Ctrl-C works (node as PID 1 doesn't).
-RUN apk add --no-cache ffmpeg tini
+RUN apk add --no-cache tini
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DOWNLOAD_DIR=/downloads

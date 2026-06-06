@@ -18,7 +18,7 @@ Fill in your provider's base URL (including port), username and password. See `.
 
 ## Run with Docker (recommended)
 
-A prebuilt image with ffmpeg already bundled, so there's nothing else to install. It's an interactive CLI, so run it with `-it`, pass your `.env`, and mount a folder for the downloads:
+There's a prebuilt image, so there's nothing to install. It's an interactive CLI, so run it with `-it`, pass your `.env`, and mount a folder for the downloads:
 
 ```
 docker run -it --rm \
@@ -49,7 +49,7 @@ docker compose run --rm timeshifter
 
 ## Run manually
 
-Needs Node 20+ and [ffmpeg](https://ffmpeg.org/download.html) on your PATH:
+Needs Node 20+:
 
 ```
 npm install
@@ -58,12 +58,11 @@ npm start
 
 ## Notes / troubleshooting
 
+- **Recordings are saved as `.ts`.** That's what the provider serves, and it plays fine in VLC, Plex, Emby and Jellyfin. The download is a plain file copy (no transcoding), so it's quick.
 - **403 / forbidden on download:** some providers block requests without a known player user agent. Set `IPTV_USER_AGENT` in `.env` (a VLC string is in the example).
-- **Output format:** defaults to `ts` (raw stream, no remux, plays fine in VLC and Plex). Set `OUTPUT_FORMAT=mp4` if you'd rather have an MP4 (it remuxes with `-c copy`, no re-encode).
 - **Timeshift URL style:** most panels use the default path style. If downloads fail with a valid account, try `TIMESHIFT_MODE=php`.
 - **Padding:** set `PADDING_BEFORE_MINUTES` / `PADDING_AFTER_MINUTES` to start a bit early and run a bit long, in case the guide times are off. A still-airing show's end padding is capped at "now".
 - **Filename:** set `FILENAME_TEMPLATE` to control how files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to `{channel} - {title} - {datetime}.{ext}`.
-- **ffmpeg warnings during download:** lines like `non-existing PPS`, `no frame!`, `Packet corrupt` and `timestamp discontinuity` are normal here. Catchup streams aren't perfectly clean, so ffmpeg logs these warnings while it copies the recording, but the file is fine. By default these are hidden behind a clean progress line; set `VERBOSE=true` to see ffmpeg's full output. The duration check at the end is the real test of whether the recording is complete.
 - **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `SET_AIRED_TIME=false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
 - **Times** shown in the guide are the provider's local time, which is what the timeshift URL needs, so no timezone conversion is done.
 

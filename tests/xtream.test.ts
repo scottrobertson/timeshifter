@@ -8,13 +8,11 @@ const config: Config = {
   username: "user",
   password: "pass",
   downloadDir: "downloads",
-  outputFormat: "ts",
   userAgent: undefined,
   timeshiftMode: "path",
   paddingBefore: 0,
   paddingAfter: 0,
   filenameTemplate: "{title}.{ext}",
-  verbose: false,
   setAiredTime: true,
 };
 

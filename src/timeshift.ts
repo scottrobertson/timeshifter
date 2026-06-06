@@ -1,5 +1,8 @@
-import { spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
 import { mkdir, utimes } from "node:fs/promises";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import path from "node:path";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, RecordingWindow } from "./source.js";
@@ -109,7 +112,7 @@ export function outputFilename(
     date,
     time,
     datetime: `${date}_${time}`,
-    ext: config.outputFormat,
+    ext: "ts",
   };
 
   return config.filenameTemplate.replace(/\{(\w+)\}/g, (match, key: string) =>
@@ -119,86 +122,76 @@ export function outputFilename(
 
 export interface DownloadResult {
   outputPath: string;
+  bytesDownloaded: number;
+  /** From the Content-Length header, or null if the server didn't send one. */
+  expectedBytes: number | null;
 }
 
-/** Records the timeshift stream with ffmpeg for the program's duration. */
+/**
+ * Download the timeshift recording straight to a file with a plain GET. The
+ * server already trims the .ts to the requested duration, so there's nothing to
+ * transcode. We deliberately avoid Range requests: some CDNs serve a normal GET
+ * fine but drip-feed Range requests, so any resume-by-byte-offset crawls.
+ */
 export async function download(
   config: Config,
   url: string,
-  minutes: number,
   filename: string,
 ): Promise<DownloadResult> {
   const outputPath = path.join(config.downloadDir, filename);
   // dirname (not just downloadDir) so a template with subfolders still works.
   await mkdir(path.dirname(outputPath), { recursive: true });
-  const seconds = minutes * 60;
 
-  // Both modes hand ffmpeg's output straight to the terminal. Verbose shows
-  // everything; clean mode stays quiet apart from ffmpeg's own progress line
-  // (-stats prints regardless of log level), which hides the harmless TS noise.
-  const args = config.verbose
-    ? ["-hide_banner", "-loglevel", "info", "-stats"]
-    : ["-hide_banner", "-loglevel", "quiet", "-stats"];
+  const headers: Record<string, string> = {};
+  if (config.userAgent) headers["User-Agent"] = config.userAgent;
 
-  if (config.userAgent) args.push("-user_agent", config.userAgent);
-  // IPTV servers often drop the connection mid-stream; reconnect and resume.
-  args.push(
-    "-reconnect", "1",
-    "-reconnect_streamed", "1",
-    "-reconnect_on_network_error", "1",
-    "-reconnect_delay_max", "5",
-    "-i", url,
-    "-t", String(seconds),
-    "-c", "copy",
-  );
-  if (config.outputFormat === "mp4") {
-    // Needed so AAC from a TS stream is valid inside MP4.
-    args.push("-bsf:a", "aac_adts_to_asc");
+  const response = await fetch(url, { headers });
+  if (!response.ok || !response.body) {
+    throw new Error(`Download failed: ${response.status} ${response.statusText}`);
   }
-  args.push("-y", outputPath);
+  const expectedBytes = Number(response.headers.get("content-length")) || null;
 
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn("ffmpeg", args, { stdio: "inherit" });
-    child.on("error", (err) => {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error("ffmpeg not found. Install it first (e.g. `brew install ffmpeg`)."));
-      } else {
-        reject(err);
+  let bytesDownloaded = 0;
+  let lastRender = 0;
+  const counter = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      bytesDownloaded += chunk.length;
+      const now = Date.now();
+      if (now - lastRender >= 500) {
+        renderDownloadProgress(bytesDownloaded, expectedBytes);
+        lastRender = now;
       }
-    });
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`ffmpeg exited with code ${code}`));
-    });
+      callback(null, chunk);
+    },
   });
 
-  return { outputPath };
+  try {
+    await pipeline(
+      Readable.fromWeb(response.body as WebReadableStream<Uint8Array>),
+      counter,
+      createWriteStream(outputPath),
+    );
+  } catch (err) {
+    // The server tends to close a touch before the advertised length. If we got
+    // essentially all of it that's fine; only a real shortfall is a failure.
+    if (!(expectedBytes && bytesDownloaded >= expectedBytes * 0.99)) {
+      throw err;
+    }
+  }
+  renderDownloadProgress(bytesDownloaded, expectedBytes);
+  process.stdout.write("\n");
+
+  return { outputPath, bytesDownloaded, expectedBytes };
 }
 
-/**
- * Reads the recorded file's duration with ffprobe. Returns seconds, or null if
- * ffprobe isn't available or the duration can't be read. Note: for raw .ts the
- * reported duration is approximate, since timestamp discontinuities throw it off.
- */
-export async function probeDurationSeconds(
-  filePath: string,
-): Promise<number | null> {
-  return new Promise((resolve) => {
-    const child = spawn("ffprobe", [
-      "-v", "error",
-      "-show_entries", "format=duration",
-      "-of", "default=noprint_wrappers=1:nokey=1",
-      filePath,
-    ]);
-    let out = "";
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => (out += chunk));
-    child.on("error", () => resolve(null));
-    child.on("close", () => {
-      const seconds = Number.parseFloat(out.trim());
-      resolve(Number.isFinite(seconds) ? seconds : null);
-    });
-  });
+function renderDownloadProgress(downloaded: number, total: number | null): void {
+  const mb = (n: number) => (n / 1_000_000).toFixed(0);
+  if (total) {
+    const pct = Math.min(100, Math.floor((downloaded / total) * 100));
+    process.stdout.write(`\r  Downloaded ${mb(downloaded)} / ${mb(total)} MB (${pct}%)   `);
+  } else {
+    process.stdout.write(`\r  Downloaded ${mb(downloaded)} MB   `);
+  }
 }
 
 /** Set a file's modified (and access) time, e.g. to when a program aired. */

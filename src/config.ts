@@ -1,14 +1,12 @@
 import "dotenv/config";
 
 export type TimeshiftMode = "path" | "php";
-export type OutputFormat = "mp4" | "ts";
 
 export interface Config {
   baseUrl: string;
   username: string;
   password: string;
   downloadDir: string;
-  outputFormat: OutputFormat;
   userAgent: string | undefined;
   timeshiftMode: TimeshiftMode;
   /** Minutes to start recording before the program's scheduled start. */
@@ -17,8 +15,6 @@ export interface Config {
   paddingAfter: number;
   /** Output filename template. Supports {channel} {title} {date} {time} {datetime} {ext}. */
   filenameTemplate: string;
-  /** Show ffmpeg's full raw output instead of a clean progress line. */
-  verbose: boolean;
   /** Set the downloaded file's modified time to when the program aired. */
   setAiredTime: boolean;
 }
@@ -58,12 +54,6 @@ export function loadConfig(): Config {
   const username = required("IPTV_USERNAME");
   const password = required("IPTV_PASSWORD");
 
-  const outputFormat = (process.env.OUTPUT_FORMAT?.trim() ||
-    "ts") as OutputFormat;
-  if (outputFormat !== "mp4" && outputFormat !== "ts") {
-    throw new Error(`OUTPUT_FORMAT must be "mp4" or "ts", got "${outputFormat}"`);
-  }
-
   const timeshiftMode = (process.env.TIMESHIFT_MODE?.trim() ||
     "path") as TimeshiftMode;
   if (timeshiftMode !== "path" && timeshiftMode !== "php") {
@@ -77,14 +67,12 @@ export function loadConfig(): Config {
     username,
     password,
     downloadDir: process.env.DOWNLOAD_DIR?.trim() || "downloads",
-    outputFormat,
     userAgent: process.env.IPTV_USER_AGENT?.trim() || undefined,
     timeshiftMode,
     paddingBefore: nonNegativeInt("PADDING_BEFORE_MINUTES"),
     paddingAfter: nonNegativeInt("PADDING_AFTER_MINUTES"),
     filenameTemplate:
       process.env.FILENAME_TEMPLATE?.trim() || DEFAULT_FILENAME_TEMPLATE,
-    verbose: boolean("VERBOSE"),
     setAiredTime: boolean("SET_AIRED_TIME", true),
   };
 }

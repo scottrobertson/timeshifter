@@ -6,9 +6,9 @@ import { loadConfig } from "../src/config.js";
 // so tests don't pick up the developer's real .env (loaded via dotenv).
 const KEYS = [
   "IPTV_URL", "IPTV_USERNAME", "IPTV_PASSWORD",
-  "OUTPUT_FORMAT", "TIMESHIFT_MODE", "DOWNLOAD_DIR", "IPTV_USER_AGENT",
+  "TIMESHIFT_MODE", "DOWNLOAD_DIR", "IPTV_USER_AGENT",
   "PADDING_BEFORE_MINUTES", "PADDING_AFTER_MINUTES",
-  "FILENAME_TEMPLATE", "VERBOSE", "SET_AIRED_TIME",
+  "FILENAME_TEMPLATE", "SET_AIRED_TIME",
 ];
 
 const BASE = {
@@ -34,12 +34,10 @@ function loadWith(overrides: Record<string, string> = {}) {
 describe("loadConfig", () => {
   it("applies sensible defaults", () => {
     const config = loadWith(BASE);
-    assert.equal(config.outputFormat, "ts");
     assert.equal(config.timeshiftMode, "path");
     assert.equal(config.downloadDir, "downloads");
     assert.equal(config.paddingBefore, 0);
     assert.equal(config.paddingAfter, 0);
-    assert.equal(config.verbose, false);
     assert.equal(config.setAiredTime, true); // on by default
   });
 
@@ -51,10 +49,6 @@ describe("loadConfig", () => {
     assert.throws(() => loadWith({ IPTV_USERNAME: "user", IPTV_PASSWORD: "pass" }));
   });
 
-  it("rejects an invalid output format", () => {
-    assert.throws(() => loadWith({ ...BASE, OUTPUT_FORMAT: "mkv" }));
-  });
-
   it("rejects an invalid timeshift mode", () => {
     assert.throws(() => loadWith({ ...BASE, TIMESHIFT_MODE: "weird" }));
   });
@@ -64,9 +58,7 @@ describe("loadConfig", () => {
     assert.throws(() => loadWith({ ...BASE, PADDING_AFTER_MINUTES: "abc" }));
   });
 
-  it("parses booleans, including SET_AIRED_TIME being off", () => {
-    const config = loadWith({ ...BASE, VERBOSE: "true", SET_AIRED_TIME: "false" });
-    assert.equal(config.verbose, true);
-    assert.equal(config.setAiredTime, false);
+  it("turns SET_AIRED_TIME off when set to false", () => {
+    assert.equal(loadWith({ ...BASE, SET_AIRED_TIME: "false" }).setAiredTime, false);
   });
 });
