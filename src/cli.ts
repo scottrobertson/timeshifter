@@ -22,7 +22,6 @@ async function pickChannel(channels: Channel[]): Promise<Channel> {
       return channels
         .map((channel, i) => ({ channel, i }))
         .filter(({ channel }) => !term || channel.name.toLowerCase().includes(term))
-        .slice(0, 50)
         .map(({ channel, i }) => ({
           name: `${channel.name}  (${channel.archiveDays}d archive)`,
           value: i,
