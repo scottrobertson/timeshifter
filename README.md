@@ -6,6 +6,17 @@ timeshifter lets you download from that archive. You pick a channel and a past s
 
 For now it works with Xtream Codes providers (the most common kind, where you log in with a URL, username and password).
 
+## Features
+
+- Pick a past show from the channel's guide and download it.
+- Type to filter both the channel list and the guide.
+- Pad or trim the start and end of a recording, as a default or per-download.
+- Name files however you like, including into subfolders.
+- Stamps each file with the show's air time, so it sorts by air date in your media library.
+- Live progress with download speed and ETA.
+- Saves as `.ts`, which plays in VLC, Plex, Emby and Jellyfin. No transcoding, so it's quick.
+- Runs with Docker or Node, nothing else to install.
+
 ## Setup
 
 Create your `.env`:
@@ -58,10 +69,9 @@ npm start
 
 ## Notes / troubleshooting
 
-- **Recordings are saved as `.ts`.** That's what the provider serves, and it plays fine in VLC, Plex, Emby and Jellyfin. The download is a plain file copy (no transcoding), so it's quick.
 - **403 / forbidden on download:** some providers block requests without a known player user agent. Set `IPTV_USER_AGENT` in `.env` (a VLC string is in the example).
 - **Timeshift URL style:** most panels use the default path style. If downloads fail with a valid account, try `TIMESHIFT_MODE=php`.
-- **Padding:** set `PADDING_BEFORE_MINUTES` / `PADDING_AFTER_MINUTES` to start a bit early and run a bit long, in case the guide times are off. A still-airing show's end padding is capped at "now".
+- **Padding:** `PADDING_BEFORE_MINUTES` / `PADDING_AFTER_MINUTES` start the recording early and end it late, in case the guide times are off. A negative number does the opposite (starts late, ends early). These are the defaults; you can also change them per-download at the confirm prompt. A still-airing show's end is capped at the current time.
 - **Filename:** set `FILENAME_TEMPLATE` to control how files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to `{channel} - {title} - {datetime}.{ext}`.
 - **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `SET_AIRED_TIME=false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
 - **Times** in the guide and filenames are shown in the provider's local time (what you'd expect). The timeshift URL itself is built in UTC, since that's what the endpoint expects, get this wrong and you'd record the wrong hour.

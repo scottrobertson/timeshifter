@@ -39,12 +39,12 @@ function boolean(name: string, fallback = false): boolean {
   return fallback;
 }
 
-function nonNegativeInt(name: string): number {
+function intMinutes(name: string): number {
   const raw = process.env[name]?.trim();
   if (!raw) return 0;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0) {
-    throw new Error(`${name} must be a whole number of minutes (0 or more), got "${raw}"`);
+  if (!Number.isInteger(n)) {
+    throw new Error(`${name} must be a whole number of minutes, got "${raw}"`);
   }
   return n;
 }
@@ -69,8 +69,8 @@ export function loadConfig(): Config {
     downloadDir: process.env.DOWNLOAD_DIR?.trim() || "downloads",
     userAgent: process.env.IPTV_USER_AGENT?.trim() || undefined,
     timeshiftMode,
-    paddingBefore: nonNegativeInt("PADDING_BEFORE_MINUTES"),
-    paddingAfter: nonNegativeInt("PADDING_AFTER_MINUTES"),
+    paddingBefore: intMinutes("PADDING_BEFORE_MINUTES"),
+    paddingAfter: intMinutes("PADDING_AFTER_MINUTES"),
     filenameTemplate:
       process.env.FILENAME_TEMPLATE?.trim() || DEFAULT_FILENAME_TEMPLATE,
     setAiredTime: boolean("SET_AIRED_TIME", true),

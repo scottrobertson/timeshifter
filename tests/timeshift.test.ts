@@ -64,18 +64,22 @@ describe("formatStartForUrl", () => {
 
 describe("recordingWindow", () => {
   it("uses the program length when there is no padding", () => {
-    const window = recordingWindow(makeConfig(), makeProgram());
+    const window = recordingWindow(makeProgram(), 0, 0);
     assert.equal(window.minutes, 60);
     assert.equal(window.start.getTime(), START.getTime());
   });
 
   it("adds padding before and after", () => {
-    const window = recordingWindow(
-      makeConfig({ paddingBefore: 2, paddingAfter: 5 }),
-      makeProgram(),
-    );
+    const window = recordingWindow(makeProgram(), 2, 5);
     assert.equal(window.minutes, 67);
     assert.equal(window.start.getTime(), Date.UTC(2024, 2, 10, 11, 58, 0));
+  });
+
+  it("trims with negative padding", () => {
+    // Start 5 min later, end 10 min earlier: 60 - 5 - 10 = 45 min.
+    const window = recordingWindow(makeProgram(), -5, -10);
+    assert.equal(window.minutes, 45);
+    assert.equal(window.start.getTime(), Date.UTC(2024, 2, 10, 12, 5, 0));
   });
 
   it("shifts the start back by the before-padding across a day boundary", () => {
@@ -83,10 +87,7 @@ describe("recordingWindow", () => {
       start: new Date(Date.UTC(2024, 2, 10, 0, 1, 0)),
       end: new Date(Date.UTC(2024, 2, 10, 0, 31, 0)),
     });
-    const window = recordingWindow(
-      makeConfig({ paddingBefore: 5, paddingAfter: 5 }),
-      program,
-    );
+    const window = recordingWindow(program, 5, 5);
     assert.equal(window.start.getTime(), Date.UTC(2024, 2, 9, 23, 56, 0));
     assert.equal(window.minutes, 40);
   });
@@ -98,7 +99,7 @@ describe("recordingWindow", () => {
       end: new Date(now + 60 * 60_000), // ends in an hour
     });
     // Without the cap this would be ~100 min; capped at "now" it's about 10.
-    const window = recordingWindow(makeConfig({ paddingAfter: 30 }), program);
+    const window = recordingWindow(program, 0, 30);
     assert.ok(window.minutes >= 9 && window.minutes <= 12, `got ${window.minutes}`);
   });
 });

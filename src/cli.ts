@@ -1,4 +1,4 @@
-import { search, confirm } from "@inquirer/prompts";
+import { search, confirm, select, number } from "@inquirer/prompts";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
@@ -89,33 +89,55 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
   }
 
   const program = await pickProgram(downloadable);
-  const window = recordingWindow(config, program);
-  const url = source.catchupUrl(channel, window);
   const filename = outputFilename(config, channel, program);
-
   const programMinutes = Math.round(
     (program.end.getTime() - program.start.getTime()) / 60_000,
   );
-  const paddingText =
-    config.paddingBefore || config.paddingAfter
-      ? `${config.paddingBefore} min before, ${config.paddingAfter} min after`
-      : "none";
 
-  console.log("");
-  console.log(`  Channel:    ${channel.name}`);
-  console.log(`  Program:    ${program.title}`);
-  console.log(`  Aired:      ${formatProgramTime(program)}  (${programMinutes} min)`);
-  console.log(`  Padding:    ${paddingText}`);
-  console.log(`  Length:     ${window.minutes} min`);
-  console.log(`  Saving:     ${config.downloadDir}/${filename}`);
-  console.log("");
+  let before = config.paddingBefore;
+  let after = config.paddingAfter;
+  let window = recordingWindow(program, before, after);
 
-  const go = await confirm({ message: "Download this?", default: true });
-  if (!go) {
-    console.log("Skipped.");
-    return;
+  const printPlan = (): void => {
+    const padding =
+      before || after ? `${before} min before, ${after} min after` : "none";
+    console.log("");
+    console.log(`  Channel:  ${channel.name}`);
+    console.log(`  Program:  ${program.title}`);
+    console.log(`  Aired:    ${formatProgramTime(program)}  (${programMinutes} min)`);
+    console.log(`  Padding:  ${padding}`);
+    console.log(`  Length:   ${window.minutes} min`);
+    console.log(`  Saving:   ${config.downloadDir}/${filename}`);
+    console.log("");
+  };
+
+  printPlan();
+
+  // Default action is "Download", so the common case is a single Enter.
+  // Padding can be adjusted (negative values trim) without re-picking the show.
+  for (;;) {
+    const action = await select({
+      message: "Download this?",
+      choices: [
+        { name: "Download", value: "download" },
+        { name: "Adjust padding", value: "adjust" },
+        { name: "Cancel", value: "cancel" },
+      ],
+    });
+    if (action === "cancel") {
+      console.log("Skipped.");
+      return;
+    }
+    if (action === "download") break;
+
+    console.log("\nMinutes to add at each end. A negative number records less.");
+    before = Math.round((await number({ message: "Before:", default: before })) ?? before);
+    after = Math.round((await number({ message: "After:", default: after })) ?? after);
+    window = recordingWindow(program, before, after);
+    printPlan();
   }
 
+  const url = source.catchupUrl(channel, window);
   console.log(""); // blank line above the progress bar
   const result = await download(config, url, filename);
   console.log(`\nDone: ${result.outputPath}`);

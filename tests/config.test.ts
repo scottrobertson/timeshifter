@@ -53,8 +53,8 @@ describe("loadConfig", () => {
     assert.throws(() => loadWith({ ...BASE, TIMESHIFT_MODE: "weird" }));
   });
 
-  it("rejects negative or non-numeric padding", () => {
-    assert.throws(() => loadWith({ ...BASE, PADDING_BEFORE_MINUTES: "-1" }));
+  it("allows negative padding (trim) but rejects non-numbers", () => {
+    assert.equal(loadWith({ ...BASE, PADDING_BEFORE_MINUTES: "-2" }).paddingBefore, -2);
     assert.throws(() => loadWith({ ...BASE, PADDING_AFTER_MINUTES: "abc" }));
   });
 

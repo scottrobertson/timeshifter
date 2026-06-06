@@ -22,18 +22,17 @@ export function formatStartForUrl(start: Date): string {
 }
 
 /**
- * Recording window for a program, including padding. Caps the end at "now" so a
- * still-airing show doesn't ask for footage that doesn't exist yet.
+ * Recording window for a program, with padding in minutes (negative records less).
+ * Caps the end at "now" so a still-airing show doesn't ask for footage that
+ * doesn't exist yet.
  */
 export function recordingWindow(
-  config: Config,
   program: EpgProgram,
+  paddingBefore: number,
+  paddingAfter: number,
 ): RecordingWindow {
-  const startMs = program.start.getTime() - config.paddingBefore * 60_000;
-  const endMs = Math.min(
-    program.end.getTime() + config.paddingAfter * 60_000,
-    Date.now(),
-  );
+  const startMs = program.start.getTime() - paddingBefore * 60_000;
+  const endMs = Math.min(program.end.getTime() + paddingAfter * 60_000, Date.now());
   const minutes = Math.max(1, Math.ceil((endMs - startMs) / 60_000));
   return { start: new Date(startMs), minutes };
 }
