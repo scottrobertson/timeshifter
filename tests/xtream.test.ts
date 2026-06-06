@@ -23,6 +23,13 @@ function stubFetch(response: unknown): void {
     json: async () => response,
   })) as unknown as typeof globalThis.fetch;
 }
+/** Stub that returns different JSON depending on the `action` in the URL. */
+function stubFetchByAction(byAction: Record<string, unknown>): void {
+  globalThis.fetch = (async (url: string | URL) => {
+    const action = new URL(String(url)).searchParams.get("action") ?? "";
+    return { ok: true, json: async () => byAction[action] ?? [] };
+  }) as unknown as typeof globalThis.fetch;
+}
 afterEach(() => {
   globalThis.fetch = realFetch;
 });
@@ -42,13 +49,27 @@ describe("XtreamSource.connect", () => {
 });
 
 describe("XtreamSource.archiveChannels", () => {
-  it("keeps only channels that have an archive", async () => {
-    stubFetch([
-      { stream_id: 1, name: "Has archive", tv_archive: 1, tv_archive_duration: 7 },
-      { stream_id: 2, name: "No archive", tv_archive: 0, tv_archive_duration: 0 },
-    ]);
+  it("groups archive channels by category in provider order", async () => {
+    stubFetchByAction({
+      get_live_categories: [
+        { category_id: "10", category_name: "Sports" },
+        { category_id: "20", category_name: "Entertainment" },
+      ],
+      // Provider order interleaves categories; grouping should cluster them
+      // while keeping each category's channels in their stream order.
+      get_live_streams: [
+        { stream_id: 1, name: "Sports One", tv_archive: 1, tv_archive_duration: 7, category_id: "10" },
+        { stream_id: 2, name: "Ent One", tv_archive: 1, tv_archive_duration: 5, category_id: "20" },
+        { stream_id: 3, name: "No archive", tv_archive: 0, tv_archive_duration: 0, category_id: "10" },
+        { stream_id: 4, name: "Sports Two", tv_archive: 1, tv_archive_duration: 7, category_id: "10" },
+      ],
+    });
     const channels = await new XtreamSource(config).archiveChannels();
-    assert.deepEqual(channels, [{ name: "Has archive", archiveDays: 7, streamId: 1 }]);
+    assert.deepEqual(channels, [
+      { name: "Sports One", archiveDays: 7, streamId: 1, group: "Sports" },
+      { name: "Sports Two", archiveDays: 7, streamId: 4, group: "Sports" },
+      { name: "Ent One", archiveDays: 5, streamId: 2, group: "Entertainment" },
+    ]);
   });
 });
 

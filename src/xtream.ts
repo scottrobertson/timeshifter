@@ -71,22 +71,44 @@ export class XtreamSource implements Source {
     return `${status} (expires ${new Date(expSeconds * 1000).toLocaleDateString()})`;
   }
 
-  /** All live channels that have a timeshift archive available. */
+  /** Archive channels, grouped by category in the provider's order. */
   async archiveChannels(): Promise<Channel[]> {
+    const categories = await this.categories();
+    const names = new Map(categories.map((c) => [String(c.category_id), c.category_name]));
+    const order = new Map(categories.map((c, i) => [String(c.category_id), i]));
+    const rank = (id: string) => order.get(id) ?? Number.MAX_SAFE_INTEGER;
+
     const data = (await this.call({ action: "get_live_streams" })) as Array<{
       stream_id: number | string;
       name: string;
       tv_archive: number | string;
       tv_archive_duration: number | string;
+      category_id?: string | number;
     }>;
 
+    // Group by category in the provider's category order. Array.sort is stable,
+    // so channels within a category keep the provider's stream order.
     return data
       .filter((item) => isTruthy(item.tv_archive))
+      .sort((a, b) => rank(String(a.category_id)) - rank(String(b.category_id)))
       .map((item) => ({
         name: item.name,
         archiveDays: toNumber(item.tv_archive_duration),
         streamId: toNumber(item.stream_id),
+        group: names.get(String(item.category_id)),
       }));
+  }
+
+  /** Live categories in the provider's order. Best-effort; empty if the call fails. */
+  private async categories(): Promise<Array<{ category_id: string | number; category_name: string }>> {
+    try {
+      return (await this.call({ action: "get_live_categories" })) as Array<{
+        category_id: string | number;
+        category_name: string;
+      }>;
+    } catch {
+      return [];
+    }
   }
 
   /** EPG for a channel, newest first. */

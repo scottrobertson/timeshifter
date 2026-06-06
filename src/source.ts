@@ -6,6 +6,8 @@ export interface Channel {
   name: string;
   /** How many days back the archive goes. */
   archiveDays: number;
+  /** The channel's group/category name, for browsing. */
+  group?: string;
 
   // Xtream sources identify a channel by its stream id.
   streamId?: number;

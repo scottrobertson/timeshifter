@@ -15,17 +15,23 @@ function formatProgramTime(program: EpgProgram): string {
 }
 
 async function pickChannel(channels: Channel[]): Promise<Channel> {
+  // Channels are grouped by category (provider order); show the group inline.
+  const label = (c: Channel): string =>
+    c.group
+      ? `${c.group} · ${c.name}  (${c.archiveDays}d archive)`
+      : `${c.name}  (${c.archiveDays}d archive)`;
+
   const index = await search<number>({
     message: "Search for a channel (type to filter):",
     source: async (input) => {
       const term = (input ?? "").toLowerCase();
       return channels
         .map((channel, i) => ({ channel, i }))
-        .filter(({ channel }) => !term || channel.name.toLowerCase().includes(term))
-        .map(({ channel, i }) => ({
-          name: `${channel.name}  (${channel.archiveDays}d archive)`,
-          value: i,
-        }));
+        .filter(
+          ({ channel }) =>
+            !term || `${channel.group ?? ""} ${channel.name}`.toLowerCase().includes(term),
+        )
+        .map(({ channel, i }) => ({ name: label(channel), value: i }));
     },
   });
   return channels[index]!;
