@@ -7,24 +7,11 @@ import {
   outputFilename,
   recordingWindow,
   setFileTime,
-  type DownloadResult,
 } from "./timeshift.js";
 
 function formatProgramTime(program: EpgProgram): string {
   // Trim "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM".
   return program.startLocal.slice(0, 16);
-}
-
-/** Reports the downloaded size and warns if it came up well short of expected. */
-function reportSize(result: DownloadResult): void {
-  const mb = (result.bytesDownloaded / 1_000_000).toFixed(0);
-  console.log(`Downloaded ${mb} MB.`);
-  if (result.expectedBytes && result.bytesDownloaded < result.expectedBytes * 0.99) {
-    const expectedMb = (result.expectedBytes / 1_000_000).toFixed(0);
-    console.log(
-      `⚠️  Expected about ${expectedMb} MB, so this may be incomplete. Check the file before relying on it.`,
-    );
-  }
 }
 
 async function pickChannel(channels: Channel[]): Promise<Channel> {
@@ -140,18 +127,19 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
   const url = source.catchupUrl(channel, window);
   console.log(""); // blank line above the progress bar
   const result = await download(config, url, filename);
-  console.log(`\nDone: ${result.outputPath}`);
-  reportSize(result);
 
   // Set the file's time to when the show aired, so it sorts by air date in a
   // media library rather than by when it was downloaded.
   if (config.setAiredTime) {
     try {
       await setFileTime(result.outputPath, program.end);
+      console.log("  ✓ Set the file date to when it aired");
     } catch {
-      console.log("Could not set the file's time to the air time.");
+      console.log("  ⚠️  Could not set the file date");
     }
   }
+
+  console.log(`\n  Saved: ${result.outputPath}`);
 }
 
 export async function run(config: Config): Promise<void> {

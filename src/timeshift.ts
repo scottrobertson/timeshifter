@@ -1,5 +1,6 @@
+import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, utimes } from "node:fs/promises";
+import { mkdir, rename, rm, utimes } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
@@ -101,19 +102,16 @@ export interface DownloadResult {
 }
 
 /**
- * Download the timeshift recording straight to a file with a plain GET. The
- * server already trims the .ts to the requested duration, so there's nothing to
- * transcode. We deliberately avoid Range requests: some CDNs serve a normal GET
- * fine but drip-feed Range requests, so any resume-by-byte-offset crawls.
+ * Stream a URL straight to a file with a plain GET, showing progress. We avoid
+ * Range requests: some CDNs serve a normal GET fine but drip-feed Range
+ * requests, so any resume-by-byte-offset crawls. Returns the byte counts.
  */
-export async function download(
+export async function streamToFile(
   config: Config,
   url: string,
-  filename: string,
-): Promise<DownloadResult> {
-  const outputPath = path.join(config.downloadDir, filename);
-  // dirname (not just downloadDir) so a template with subfolders still works.
-  await mkdir(path.dirname(outputPath), { recursive: true });
+  destPath: string,
+): Promise<{ bytesDownloaded: number; expectedBytes: number | null }> {
+  await mkdir(path.dirname(destPath), { recursive: true });
 
   const headers: Record<string, string> = {};
   if (config.userAgent) headers["User-Agent"] = config.userAgent;
@@ -143,7 +141,7 @@ export async function download(
     await pipeline(
       Readable.fromWeb(response.body as WebReadableStream<Uint8Array>),
       counter,
-      createWriteStream(outputPath),
+      createWriteStream(destPath),
     );
   } catch (err) {
     // The server tends to close a touch before the advertised length. If we got
@@ -154,6 +152,111 @@ export async function download(
   }
   renderDownloadProgress(bytesDownloaded, expectedBytes, startedAt);
   process.stdout.write("\n");
+
+  return { bytesDownloaded, expectedBytes };
+}
+
+/**
+ * Remux a .ts in place with ffmpeg, copying the streams but rebuilding the
+ * timestamps. The raw timeshift .ts has discontinuous timestamps (the provider
+ * stitches archive segments), which leaves the file unseekable and reporting a
+ * nonsense duration. This rewrites them so it seeks correctly. No re-encode.
+ */
+function remux(input: string, output: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-hide_banner", "-loglevel", "error", "-nostats",
+      "-fflags", "+genpts",
+      "-i", input,
+      "-c", "copy",
+      "-avoid_negative_ts", "make_zero",
+      "-muxpreload", "0", "-muxdelay", "0",
+      "-f", "mpegts", // the temp file has no .ts extension to infer from
+      "-y", output,
+    ];
+    const child = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => (stderr += chunk));
+    child.on("error", (err) => {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error("ffmpeg not found. Install it first (e.g. `brew install ffmpeg`)."));
+      } else {
+        reject(err);
+      }
+    });
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg failed${stderr.trim() ? `: ${stderr.trim()}` : ` (code ${code})`}`));
+    });
+  });
+}
+
+/**
+ * A small spinner for a step of unknown length. Returns a finish function:
+ * call it with the completed-step label to replace the spinner with a tick.
+ */
+function startStep(label: string): (doneLabel: string) => void {
+  if (!process.stdout.isTTY) {
+    process.stdout.write(`  ${label}…\n`);
+    return (doneLabel) => process.stdout.write(`  ✓ ${doneLabel}\n`);
+  }
+  const frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".split("");
+  let i = 0;
+  process.stdout.write(`  ${frames[0]} ${label}…`);
+  const timer = setInterval(() => {
+    i = (i + 1) % frames.length;
+    process.stdout.write(`\r  ${frames[i]} ${label}…`);
+  }, 80);
+  return (doneLabel) => {
+    clearInterval(timer);
+    process.stdout.write(`\r\x1b[K  ✓ ${doneLabel}\n`);
+  };
+}
+
+/**
+ * Download a timeshift recording and clean it up. The raw .ts is downloaded
+ * directly (a plain GET, which the CDN serves reliably), then remuxed so the
+ * timestamps are sane and it seeks properly.
+ *
+ * The work files use non-media extensions (.part/.remux), which media servers
+ * don't import (the same convention download tools rely on), and the finished
+ * file is put in place with an atomic rename, so a library only ever sees the
+ * complete .ts appear, never a partial one.
+ */
+export async function download(
+  config: Config,
+  url: string,
+  filename: string,
+): Promise<DownloadResult> {
+  const outputPath = path.join(config.downloadDir, filename);
+  const dir = path.dirname(outputPath);
+  const base = path.basename(outputPath);
+  const downloadPath = path.join(dir, `.${base}.part`);
+  const remuxPath = path.join(dir, `.${base}.remux`);
+
+  const { bytesDownloaded, expectedBytes } = await streamToFile(config, url, downloadPath);
+
+  console.log(`  ✓ Downloaded ${(bytesDownloaded / 1e9).toFixed(2)} GB`);
+  if (expectedBytes && bytesDownloaded < expectedBytes * 0.99) {
+    console.log(
+      `  ⚠️  Expected about ${(expectedBytes / 1e9).toFixed(2)} GB, so this may be incomplete.`,
+    );
+  }
+
+  const finishRemux = startStep("Processing the recording");
+  try {
+    await remux(downloadPath, remuxPath);
+  } catch (err) {
+    process.stdout.write("\r\x1b[K"); // clear the spinner line before the error
+    await rm(downloadPath, { force: true });
+    await rm(remuxPath, { force: true });
+    throw err;
+  }
+  finishRemux("Processed");
+
+  await rm(downloadPath, { force: true });
+  await rename(remuxPath, outputPath); // atomic: the library sees it appear complete
 
   return { outputPath, bytesDownloaded, expectedBytes };
 }

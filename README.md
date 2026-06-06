@@ -60,7 +60,7 @@ docker compose run --rm timeshifter
 
 ## Run manually
 
-Needs Node 20+:
+Needs Node 20+ and [ffmpeg](https://ffmpeg.org/download.html) on your PATH (used to clean up the recording so it seeks properly):
 
 ```
 npm install

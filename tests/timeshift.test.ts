@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   buildTimeshiftUrl,
-  download,
   formatStartForUrl,
   outputFilename,
   recordingWindow,
   setFileTime,
+  streamToFile,
 } from "../src/timeshift.js";
 import type { Config } from "../src/config.js";
 import type { Channel, EpgProgram } from "../src/source.js";
@@ -182,7 +182,7 @@ describe("setFileTime", () => {
   });
 });
 
-describe("download", () => {
+describe("streamToFile", () => {
   const realFetch = globalThis.fetch;
   afterEach(() => {
     globalThis.fetch = realFetch;
@@ -190,20 +190,17 @@ describe("download", () => {
 
   it("streams the response body to a file", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const dest = path.join(dir, "out.ts");
     const data = Buffer.from("a recording's worth of bytes");
     globalThis.fetch = (async () =>
       new Response(data, {
         headers: { "content-length": String(data.length) },
       })) as unknown as typeof globalThis.fetch;
 
-    const result = await download(
-      makeConfig({ downloadDir: dir }),
-      "http://example.com/x.ts",
-      "out.ts",
-    );
+    const result = await streamToFile(makeConfig(), "http://example.com/x.ts", dest);
 
     assert.equal(result.bytesDownloaded, data.length);
     assert.equal(result.expectedBytes, data.length);
-    assert.equal((await readFile(path.join(dir, "out.ts"))).toString(), data.toString());
+    assert.equal((await readFile(dest)).toString(), data.toString());
   });
 });
