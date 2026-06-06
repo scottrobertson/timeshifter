@@ -47,7 +47,7 @@ async function pickProgram(
     const airing = program.start.getTime() <= now && program.end.getTime() > now;
     const suffix = airing ? "  [now airing — partial]" : "";
     return {
-      name: `${formatProgramTime(program)}${tz}  ${program.title}${suffix}`,
+      name: `${formatProgramTime(program)}${tz} · ${program.title}${suffix}`,
       value: index,
       description: program.description || undefined,
     };
