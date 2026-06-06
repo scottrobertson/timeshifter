@@ -32,13 +32,17 @@ async function pickChannel(channels: Channel[]): Promise<Channel> {
   return channels[index]!;
 }
 
-async function pickProgram(programs: EpgProgram[]): Promise<EpgProgram> {
+async function pickProgram(
+  programs: EpgProgram[],
+  timezone: string | undefined,
+): Promise<EpgProgram> {
   const now = Date.now();
+  const tz = timezone ? ` ${timezone}` : "";
   const choices = programs.map((program, index) => {
     const airing = program.start.getTime() <= now && program.end.getTime() > now;
     const suffix = airing ? "  [now airing — partial]" : "";
     return {
-      name: `${formatProgramTime(program)}  ${program.title}${suffix}`,
+      name: `${formatProgramTime(program)}${tz}  ${program.title}${suffix}`,
       value: index,
       description: program.description || undefined,
     };
@@ -75,7 +79,7 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
     return;
   }
 
-  const program = await pickProgram(downloadable);
+  const program = await pickProgram(downloadable, source.timezone);
   const filename = outputFilename(config, channel, program);
   const programMinutes = Math.round(
     (program.end.getTime() - program.start.getTime()) / 60_000,
@@ -88,10 +92,14 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
   const printPlan = (): void => {
     const padding =
       before || after ? `${before} min before, ${after} min after` : "none";
+    const tz = source.timezone ? ` ${source.timezone}` : "";
     console.log("");
     console.log(`  Channel:  ${channel.name}`);
     console.log(`  Program:  ${program.title}`);
-    console.log(`  Aired:    ${formatProgramTime(program)}  (${programMinutes} min)`);
+    console.log(`  Aired:    ${formatProgramTime(program)}${tz}`);
+    console.log(`  Ended:    ${program.endLocal.slice(0, 16)}${tz}`);
+    console.log(`  Runtime:  ${programMinutes} min`);
+    console.log("");
     console.log(`  Padding:  ${padding}`);
     console.log(`  Length:   ${window.minutes} min`);
     console.log(`  Saving:   ${config.downloadDir}/${filename}`);

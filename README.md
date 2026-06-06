@@ -74,7 +74,7 @@ npm start
 - **Padding:** `PADDING_BEFORE_MINUTES` / `PADDING_AFTER_MINUTES` start the recording early and end it late, in case the guide times are off. A negative number does the opposite (starts late, ends early). These are the defaults; you can also change them per-download at the confirm prompt. A still-airing show's end is capped at the current time.
 - **Filename:** set `FILENAME_TEMPLATE` to control how files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to `{channel} - {title} - {datetime}.{ext}`.
 - **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `SET_AIRED_TIME=false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
-- **Times** in the guide and filenames are shown in the provider's local time (what you'd expect). The timeshift URL itself is built in UTC, since that's what the endpoint expects, get this wrong and you'd record the wrong hour.
+- **Times** in the guide, filenames and the timeshift URL are all the provider's local time, which is what the endpoint expects. So no timezone conversion happens, and the label (e.g. `Europe/London`) shows which timezone those times are in.
 
 ## Built with Claude
 

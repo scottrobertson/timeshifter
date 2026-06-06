@@ -9,16 +9,38 @@ import type { Config } from "./config.js";
 import type { Channel, EpgProgram, RecordingWindow } from "./source.js";
 
 /**
- * Format an absolute instant as the timeshift URL time "YYYY-MM-DD:HH-MM" in
- * UTC. The endpoint interprets the URL time as UTC (verified against a provider
- * whose EPG is server-local but whose timeshift returns UTC-based windows), and
- * the program's start_timestamp is already UTC, so we just format it directly.
+ * Format a server-local "YYYY-MM-DD HH:MM:SS" string as the timeshift URL time
+ * "YYYY-MM-DD:HH-MM". The endpoint interprets the URL time in the server's own
+ * timezone (verified: a future-as-UTC but past-as-local request returns content,
+ * not a 404), and the EPG start string is already server-local, so no conversion.
  */
-export function formatStartForUrl(start: Date): string {
+export function formatStartForUrl(startLocal: string): string {
+  const [date, time] = startLocal.split(" ");
+  if (!date || !time) {
+    throw new Error(`Unexpected EPG start format: "${startLocal}"`);
+  }
+  const [hour, minute] = time.split(":");
+  return `${date}:${hour}-${minute}`;
+}
+
+/**
+ * Shift a server-local "YYYY-MM-DD HH:MM:SS" string by some minutes. We parse the
+ * wall-clock components as if UTC, do the arithmetic, then format back with UTC
+ * getters, which keeps hour/day rollovers correct without needing the timezone.
+ */
+function shiftLocal(startLocal: string, minutesDelta: number): string {
+  const [datePart, timePart] = startLocal.split(" ");
+  if (!datePart || !timePart) {
+    throw new Error(`Unexpected EPG start format: "${startLocal}"`);
+  }
+  const [y, mo, d] = datePart.split("-").map(Number);
+  const [h, mi, s] = timePart.split(":").map(Number);
+  const ms = Date.UTC(y!, mo! - 1, d!, h!, mi!, s ?? 0) + minutesDelta * 60_000;
+  const dt = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
   return (
-    `${start.getUTCFullYear()}-${pad(start.getUTCMonth() + 1)}-${pad(start.getUTCDate())}` +
-    `:${pad(start.getUTCHours())}-${pad(start.getUTCMinutes())}`
+    `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())} ` +
+    `${pad(dt.getUTCHours())}:${pad(dt.getUTCMinutes())}:${pad(dt.getUTCSeconds())}`
   );
 }
 
@@ -35,16 +57,16 @@ export function recordingWindow(
   const startMs = program.start.getTime() - paddingBefore * 60_000;
   const endMs = Math.min(program.end.getTime() + paddingAfter * 60_000, Date.now());
   const minutes = Math.max(1, Math.ceil((endMs - startMs) / 60_000));
-  return { start: new Date(startMs), minutes };
+  return { startLocal: shiftLocal(program.startLocal, -paddingBefore), minutes };
 }
 
 export function buildTimeshiftUrl(
   config: Config,
   streamId: number,
-  start: Date,
+  startLocal: string,
   minutes: number,
 ): string {
-  const startTime = formatStartForUrl(start);
+  const startTime = formatStartForUrl(startLocal);
   const { baseUrl, username, password } = config;
 
   if (config.timeshiftMode === "php") {

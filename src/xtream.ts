@@ -24,6 +24,9 @@ function isTruthy(value: unknown): boolean {
 }
 
 export class XtreamSource implements Source {
+  /** The provider's timezone (IANA name), which the guide times are in. */
+  timezone: string | undefined;
+
   constructor(private readonly config: Config) {}
 
   private async call(params: Record<string, string>): Promise<unknown> {
@@ -52,12 +55,15 @@ export class XtreamSource implements Source {
         status?: string;
         exp_date?: string | null;
       };
+      server_info?: { timezone?: string };
     };
 
     const info = data.user_info;
     if (!info || info.auth === 0) {
       throw new Error("Authentication failed. Check IPTV_URL, username and password.");
     }
+
+    this.timezone = data.server_info?.timezone || undefined;
 
     const expSeconds = info.exp_date ? toNumber(info.exp_date) : 0;
     const status = `Connected. Account status: ${info.status ?? "Unknown"}`;
@@ -93,6 +99,7 @@ export class XtreamSource implements Source {
         title?: string;
         description?: string;
         start?: string;
+        end?: string;
         start_timestamp?: string | number;
         stop_timestamp?: string | number;
         has_archive?: string | number;
@@ -108,6 +115,7 @@ export class XtreamSource implements Source {
         start: new Date(toNumber(item.start_timestamp) * 1000),
         end: new Date(toNumber(item.stop_timestamp) * 1000),
         startLocal: item.start ?? "",
+        endLocal: item.end ?? "",
         hasArchive: isTruthy(item.has_archive),
       }))
       .filter((program) => program.startLocal && program.end > program.start)
@@ -115,6 +123,6 @@ export class XtreamSource implements Source {
   }
 
   catchupUrl(channel: Channel, window: RecordingWindow): string {
-    return buildTimeshiftUrl(this.config, channel.streamId!, window.start, window.minutes);
+    return buildTimeshiftUrl(this.config, channel.streamId!, window.startLocal, window.minutes);
   }
 }

@@ -44,21 +44,19 @@ function makeProgram(overrides: Partial<EpgProgram> = {}): EpgProgram {
     start: new Date(Date.UTC(2024, 2, 10, 12, 0, 0)),
     end: new Date(Date.UTC(2024, 2, 10, 13, 0, 0)),
     startLocal: "2024-03-10 12:00:00",
+    endLocal: "2024-03-10 13:00:00",
     hasArchive: true,
     ...overrides,
   };
 }
 
-// 2024-03-10 12:00:00 UTC.
-const START = new Date(Date.UTC(2024, 2, 10, 12, 0, 0));
-
 describe("formatStartForUrl", () => {
-  it("formats a Date as UTC YYYY-MM-DD:HH-MM", () => {
-    assert.equal(formatStartForUrl(START), "2024-03-10:12-00");
+  it("reformats a server-local string to YYYY-MM-DD:HH-MM", () => {
+    assert.equal(formatStartForUrl("2024-03-10 12:00:00"), "2024-03-10:12-00");
   });
 
-  it("drops seconds and zero-pads", () => {
-    assert.equal(formatStartForUrl(new Date(Date.UTC(2024, 2, 10, 9, 5, 30))), "2024-03-10:09-05");
+  it("drops the seconds", () => {
+    assert.equal(formatStartForUrl("2024-03-10 09:05:30"), "2024-03-10:09-05");
   });
 });
 
@@ -66,29 +64,30 @@ describe("recordingWindow", () => {
   it("uses the program length when there is no padding", () => {
     const window = recordingWindow(makeProgram(), 0, 0);
     assert.equal(window.minutes, 60);
-    assert.equal(window.start.getTime(), START.getTime());
+    assert.equal(window.startLocal, "2024-03-10 12:00:00");
   });
 
   it("adds padding before and after", () => {
     const window = recordingWindow(makeProgram(), 2, 5);
     assert.equal(window.minutes, 67);
-    assert.equal(window.start.getTime(), Date.UTC(2024, 2, 10, 11, 58, 0));
+    assert.equal(window.startLocal, "2024-03-10 11:58:00");
   });
 
   it("trims with negative padding", () => {
     // Start 5 min later, end 10 min earlier: 60 - 5 - 10 = 45 min.
     const window = recordingWindow(makeProgram(), -5, -10);
     assert.equal(window.minutes, 45);
-    assert.equal(window.start.getTime(), Date.UTC(2024, 2, 10, 12, 5, 0));
+    assert.equal(window.startLocal, "2024-03-10 12:05:00");
   });
 
   it("shifts the start back by the before-padding across a day boundary", () => {
     const program = makeProgram({
       start: new Date(Date.UTC(2024, 2, 10, 0, 1, 0)),
       end: new Date(Date.UTC(2024, 2, 10, 0, 31, 0)),
+      startLocal: "2024-03-10 00:01:00",
     });
     const window = recordingWindow(program, 5, 5);
-    assert.equal(window.start.getTime(), Date.UTC(2024, 2, 9, 23, 56, 0));
+    assert.equal(window.startLocal, "2024-03-09 23:56:00");
     assert.equal(window.minutes, 40);
   });
 
@@ -105,8 +104,8 @@ describe("recordingWindow", () => {
 });
 
 describe("buildTimeshiftUrl", () => {
-  it("builds a path-style URL with the UTC time", () => {
-    const url = buildTimeshiftUrl(makeConfig(), 42, START, 60);
+  it("builds a path-style URL", () => {
+    const url = buildTimeshiftUrl(makeConfig(), 42, "2024-03-10 12:00:00", 60);
     assert.equal(
       url,
       "http://example.com:8080/timeshift/user/pass/60/2024-03-10:12-00/42.ts",
@@ -114,7 +113,12 @@ describe("buildTimeshiftUrl", () => {
   });
 
   it("url-encodes the username and password", () => {
-    const url = buildTimeshiftUrl(makeConfig({ username: "a b", password: "p/@" }), 42, START, 60);
+    const url = buildTimeshiftUrl(
+      makeConfig({ username: "a b", password: "p/@" }),
+      42,
+      "2024-03-10 12:00:00",
+      60,
+    );
     assert.equal(
       url,
       "http://example.com:8080/timeshift/a%20b/p%2F%40/60/2024-03-10:12-00/42.ts",
@@ -122,7 +126,12 @@ describe("buildTimeshiftUrl", () => {
   });
 
   it("builds a php-style URL", () => {
-    const url = buildTimeshiftUrl(makeConfig({ timeshiftMode: "php" }), 42, START, 60);
+    const url = buildTimeshiftUrl(
+      makeConfig({ timeshiftMode: "php" }),
+      42,
+      "2024-03-10 12:00:00",
+      60,
+    );
     assert.equal(
       url,
       "http://example.com:8080/streaming/timeshift.php?username=user&password=pass&stream=42&start=2024-03-10%3A12-00&duration=60",

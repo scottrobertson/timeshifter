@@ -16,20 +16,23 @@ export interface EpgProgram {
   description: string;
   start: Date;
   end: Date;
-  /** Local start string "YYYY-MM-DD HH:MM:SS", used to build the catchup URL. */
+  /** Local start/end strings "YYYY-MM-DD HH:MM:SS", for display. */
   startLocal: string;
+  endLocal: string;
   /** Whether this program falls inside the archive window. */
   hasArchive: boolean;
 }
 
 export interface RecordingWindow {
-  /** Absolute (UTC) start instant, after the before-padding has been applied. */
-  start: Date;
+  /** Server-local start string "YYYY-MM-DD HH:MM:SS", after the before-padding. */
+  startLocal: string;
   /** Total length in whole minutes, including padding. */
   minutes: number;
 }
 
 export interface Source {
+  /** The timezone the guide times are in (IANA name), known after connect(). */
+  timezone?: string;
   /** Connect or load, returning a one-line status. Throws on failure. */
   connect(): Promise<string>;
   /** Channels that have a catchup archive. */
