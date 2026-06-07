@@ -65,12 +65,14 @@ describe("recordingWindow", () => {
     const window = recordingWindow(makeProgram(), 0, 0);
     assert.equal(window.minutes, 60);
     assert.equal(window.startLocal, "2024-03-10 12:00:00");
+    assert.equal(window.endLocal, "2024-03-10 13:00:00");
   });
 
   it("adds padding before and after", () => {
     const window = recordingWindow(makeProgram(), 2, 5);
     assert.equal(window.minutes, 67);
     assert.equal(window.startLocal, "2024-03-10 11:58:00");
+    assert.equal(window.endLocal, "2024-03-10 13:05:00");
   });
 
   it("trims with negative padding", () => {

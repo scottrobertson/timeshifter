@@ -28,6 +28,8 @@ export interface EpgProgram {
 export interface RecordingWindow {
   /** Server-local start string "YYYY-MM-DD HH:MM:SS", after the before-padding. */
   startLocal: string;
+  /** Server-local end string "YYYY-MM-DD HH:MM:SS", after padding and the now-cap. */
+  endLocal: string;
   /** Total length in whole minutes, including padding. */
   minutes: number;
 }

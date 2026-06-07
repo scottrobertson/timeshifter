@@ -14,13 +14,17 @@ function formatProgramTime(program: EpgProgram): string {
   return program.startLocal.slice(0, 16);
 }
 
-export function formatProgramTimeRange(program: EpgProgram): string {
-  // "YYYY-MM-DD HH:MM-HH:MM", but if the show ends on a different day, show the
+export function formatLocalRange(startLocal: string, endLocal: string): string {
+  // "YYYY-MM-DD HH:MM-HH:MM", but if the range ends on a different day, show the
   // end date too: "YYYY-MM-DD HH:MM-YYYY-MM-DD HH:MM".
-  const start = program.startLocal.slice(0, 16);
-  const sameDay = program.startLocal.slice(0, 10) === program.endLocal.slice(0, 10);
-  const end = sameDay ? program.endLocal.slice(11, 16) : program.endLocal.slice(0, 16);
+  const start = startLocal.slice(0, 16);
+  const sameDay = startLocal.slice(0, 10) === endLocal.slice(0, 10);
+  const end = sameDay ? endLocal.slice(11, 16) : endLocal.slice(0, 16);
   return `${start}-${end}`;
+}
+
+export function formatProgramTimeRange(program: EpgProgram): string {
+  return formatLocalRange(program.startLocal, program.endLocal);
 }
 
 async function pickChannel(channels: Channel[]): Promise<Channel> {
@@ -115,6 +119,8 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
     console.log(`  Runtime:  ${programMinutes} min`);
     console.log("");
     console.log(`  Padding:  ${padding}`);
+    console.log(`  Start:    ${window.startLocal.slice(0, 16)}${tz}`);
+    console.log(`  End:      ${window.endLocal.slice(0, 16)}${tz}`);
     console.log(`  Length:   ${window.minutes} min`);
     console.log(`  Saving:   ${config.downloadDir}/${filename}`);
     console.log("");

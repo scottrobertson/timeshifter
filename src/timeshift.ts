@@ -57,7 +57,8 @@ export function recordingWindow(
   const startMs = program.start.getTime() - paddingBefore * 60_000;
   const endMs = Math.min(program.end.getTime() + paddingAfter * 60_000, Date.now());
   const minutes = Math.max(1, Math.ceil((endMs - startMs) / 60_000));
-  return { startLocal: shiftLocal(program.startLocal, -paddingBefore), minutes };
+  const startLocal = shiftLocal(program.startLocal, -paddingBefore);
+  return { startLocal, endLocal: shiftLocal(startLocal, minutes), minutes };
 }
 
 export function buildTimeshiftUrl(
