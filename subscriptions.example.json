@@ -2,9 +2,9 @@
   "pollIntervalMinutes": 10,
   "subscriptions": [
     {
-      "name": "F1 races",
-      "channel": "UK: Sky Sports F1 FHD",
-      "titleContains": ["Formula 1", "ᴸᶦᵛᵉ"],
+      "name": "NASA launches",
+      "channel": "NASA TV",
+      "titleContains": ["Launch", "Live"],
       "from": "2026-06-01",
       "paddingBefore": 5,
       "paddingAfter": 30

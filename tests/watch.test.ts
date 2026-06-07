@@ -7,7 +7,7 @@ function makeProgram(overrides: Partial<EpgProgram> = {}): EpgProgram {
   const start = new Date(Date.UTC(2026, 5, 7, 12, 0, 0));
   const end = new Date(Date.UTC(2026, 5, 7, 13, 0, 0));
   return {
-    title: "Formula 1 : Race ᴸᶦᵛᵉ",
+    title: "Artemis II : Moon Launch ᴸᶦᵛᵉ",
     description: "",
     start,
     end,

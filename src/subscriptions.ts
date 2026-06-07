@@ -5,7 +5,7 @@ import type { Channel } from "./source.js";
 export interface Subscription {
   /** A label, only used in logs. */
   name: string;
-  /** The channel's exact name (case-insensitive), e.g. "UK: Sky Sports F1 FHD". */
+  /** The channel's exact name (case-insensitive), e.g. "NASA TV". */
   channel: string;
   /** Every one of these must appear in the program title (case-insensitive). */
   titleContains: string[];

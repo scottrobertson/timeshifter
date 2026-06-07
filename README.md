@@ -7,7 +7,7 @@ timeshifter lets you download from that archive, so you can catch anything you m
 There are two ways to run it:
 
 - **[Interactive mode](#interactive-mode-pick-a-show)** — you pick a channel and a past show from the guide, and it downloads it.
-- **[Watch mode](#watch-mode-automatic-downloads)** — you set up rules (e.g. "every F1 race") and it downloads matching shows automatically as soon as they air.
+- **[Watch mode](#watch-mode-automatic-downloads)** — you set up rules (e.g. "every NASA launch") and it downloads matching shows automatically as soon as they air.
 
 For now it works with Xtream Codes providers (the most common kind, where you log in with a URL, username and password).
 
@@ -92,7 +92,7 @@ npm start
 
 ## Watch mode (automatic downloads)
 
-Instead of picking shows by hand, you can let timeshifter watch the guide and download anything that matches a set of rules, as soon as it has finished airing. Good for "grab every F1 race" type things.
+Instead of picking shows by hand, you can let timeshifter watch the guide and download anything that matches a set of rules, as soon as it has finished airing. Good for "grab every NASA launch" type things.
 
 Create a `subscriptions.json` (see `subscriptions.example.json`):
 
@@ -101,9 +101,9 @@ Create a `subscriptions.json` (see `subscriptions.example.json`):
   "pollIntervalMinutes": 10,
   "subscriptions": [
     {
-      "name": "F1 races",
-      "channel": "UK: Sky Sports F1 FHD",
-      "titleContains": ["Formula 1", "ᴸᶦᵛᵉ"],
+      "name": "NASA launches",
+      "channel": "NASA TV",
+      "titleContains": ["Launch", "Live"],
       "from": "2026-06-01",
       "paddingBefore": 5,
       "paddingAfter": 30
@@ -112,7 +112,7 @@ Create a `subscriptions.json` (see `subscriptions.example.json`):
 }
 ```
 
-- `channel` is the channel's exact name (case-insensitive), as shown in the interactive channel list, e.g. `"UK: Sky Sports F1 FHD"`.
+- `channel` is the channel's exact name (case-insensitive), as shown in the interactive channel list, e.g. `"NASA TV"`.
 - `titleContains` must **all** appear in the title, and `titleExcludes` (optional) must **not**. Matching is case-insensitive.
 - `from` (optional) only downloads shows that finish after that date. Leave it out to grab everything currently in the channel's archive.
 - `paddingBefore` / `paddingAfter` (optional) override the global padding for this rule.

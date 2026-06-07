@@ -14,57 +14,57 @@ import type { Channel } from "../src/source.js";
 
 function makeSub(overrides: Partial<Subscription> = {}): Subscription {
   return {
-    name: "F1 races",
-    channel: "Sky Sports F1 FHD",
-    titleContains: ["Formula 1", "ᴸᶦᵛᵉ"],
+    name: "NASA launches",
+    channel: "NASA TV",
+    titleContains: ["Launch", "ᴸᶦᵛᵉ"],
     ...overrides,
   };
 }
 
 const channel: Channel = {
-  name: "Sky Sports F1 FHD",
+  name: "NASA TV",
   archiveDays: 7,
   streamId: 42,
-  group: "UK: SPORTS",
+  group: "US: SCIENCE",
 };
 
 describe("channelMatches", () => {
   it("matches the exact name, case-insensitively", () => {
-    assert.equal(channelMatches(makeSub({ channel: "Sky Sports F1 FHD" }), channel), true);
-    assert.equal(channelMatches(makeSub({ channel: "sky sports f1 fhd" }), channel), true);
+    assert.equal(channelMatches(makeSub({ channel: "NASA TV" }), channel), true);
+    assert.equal(channelMatches(makeSub({ channel: "nasa tv" }), channel), true);
   });
 
   it("does not match a substring of the name", () => {
-    assert.equal(channelMatches(makeSub({ channel: "Sky Sports F1" }), channel), false);
+    assert.equal(channelMatches(makeSub({ channel: "NASA" }), channel), false);
   });
 
   it("does not match an unrelated channel", () => {
-    assert.equal(channelMatches(makeSub({ channel: "Eurosport" }), channel), false);
+    assert.equal(channelMatches(makeSub({ channel: "Discovery" }), channel), false);
   });
 });
 
 describe("titleMatches", () => {
   it("needs every titleContains term, including the superscript Live", () => {
-    assert.equal(titleMatches(makeSub(), "Formula 1 : Monaco Grand Prix: Race ᴸᶦᵛᵉ"), true);
+    assert.equal(titleMatches(makeSub(), "Artemis II : Moon Launch ᴸᶦᵛᵉ"), true);
   });
 
   it("rejects a title missing one of the terms", () => {
     // No "ᴸᶦᵛᵉ", so the replay shouldn't match.
-    assert.equal(titleMatches(makeSub(), "Formula 1 : Monaco Grand Prix: Race"), false);
+    assert.equal(titleMatches(makeSub(), "Artemis II : Moon Launch"), false);
   });
 
   it("honours titleExcludes", () => {
-    const sub = makeSub({ titleContains: ["Formula 1"], titleExcludes: ["Highlights"] });
-    assert.equal(titleMatches(sub, "Formula 1 : Race ᴸᶦᵛᵉ"), true);
-    assert.equal(titleMatches(sub, "Formula 1 : Race Highlights"), false);
+    const sub = makeSub({ titleContains: ["Launch"], titleExcludes: ["Replay"] });
+    assert.equal(titleMatches(sub, "Moon Launch ᴸᶦᵛᵉ"), true);
+    assert.equal(titleMatches(sub, "Moon Launch Replay"), false);
   });
 });
 
 describe("matchesProgram", () => {
   it("requires both the channel and the title to match", () => {
-    const title = "Formula 1 : Monaco Grand Prix: Race ᴸᶦᵛᵉ";
+    const title = "Artemis II : Moon Launch ᴸᶦᵛᵉ";
     assert.equal(matchesProgram(makeSub(), channel, title), true);
-    assert.equal(matchesProgram(makeSub({ channel: "Eurosport" }), channel, title), false);
+    assert.equal(matchesProgram(makeSub({ channel: "Discovery" }), channel, title), false);
   });
 });
 
@@ -79,14 +79,14 @@ describe("loadSubscriptions", () => {
   it("parses a valid file and applies defaults", async () => {
     const file = await writeTemp(
       JSON.stringify({
-        subscriptions: [{ name: "F1", channel: "Sky Sports F1", titleContains: ["Formula 1"] }],
+        subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: ["Launch"] }],
       }),
     );
     const config = loadSubscriptions(file);
     assert.equal(config.pollIntervalMinutes, 10);
     assert.equal(config.readyGraceMinutes, 0);
     assert.equal(config.subscriptions.length, 1);
-    assert.equal(config.subscriptions[0]!.name, "F1");
+    assert.equal(config.subscriptions[0]!.name, "Launches");
   });
 
   it("keeps an explicit poll interval and from date", async () => {
@@ -94,7 +94,7 @@ describe("loadSubscriptions", () => {
       JSON.stringify({
         pollIntervalMinutes: 5,
         subscriptions: [
-          { name: "F1", channel: "Sky Sports F1", titleContains: ["Formula 1"], from: "2026-06-01" },
+          { name: "Launches", channel: "NASA TV", titleContains: ["Launch"], from: "2026-06-01" },
         ],
       }),
     );
@@ -119,7 +119,7 @@ describe("loadSubscriptions", () => {
 
   it("throws when titleContains is empty", async () => {
     const file = await writeTemp(
-      JSON.stringify({ subscriptions: [{ name: "F1", channel: "Sky", titleContains: [] }] }),
+      JSON.stringify({ subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: [] }] }),
     );
     assert.throws(() => loadSubscriptions(file), /empty "titleContains"/);
   });
@@ -127,7 +127,7 @@ describe("loadSubscriptions", () => {
   it("throws on an invalid from date", async () => {
     const file = await writeTemp(
       JSON.stringify({
-        subscriptions: [{ name: "F1", channel: "Sky", titleContains: ["x"], from: "not-a-date" }],
+        subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: ["x"], from: "not-a-date" }],
       }),
     );
     assert.throws(() => loadSubscriptions(file), /"from" that must be a date/);

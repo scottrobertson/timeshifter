@@ -155,10 +155,10 @@ describe("outputFilename", () => {
   it("sanitises illegal characters in the channel and title", () => {
     const name = outputFilename(
       makeConfig(),
-      { ...channel, name: "Sky/Sports" },
-      makeProgram({ title: "Race: Part 1", startLocal: "2024-03-10 21:30:00" }),
+      { ...channel, name: "News/Sport" },
+      makeProgram({ title: "Launch: Part 1", startLocal: "2024-03-10 21:30:00" }),
     );
-    assert.equal(name, "Sky-Sports - Race- Part 1 - 2024-03-10_21-30.ts");
+    assert.equal(name, "News-Sport - Launch- Part 1 - 2024-03-10_21-30.ts");
   });
 
   it("supports subfolders", () => {
