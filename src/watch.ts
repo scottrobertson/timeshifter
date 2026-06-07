@@ -108,7 +108,7 @@ async function pollOnce(
         ready++;
 
         const when = program.startLocal.slice(0, 16);
-        const filename = outputFilename(config, channel, program);
+        const filename = outputFilename(config, channel, program, sub.filenameTemplate);
         if (existsSync(path.join(config.downloadDir, filename))) {
           alreadyHad++;
           console.log(`${status("skip")} ${when} · ${program.title}`);

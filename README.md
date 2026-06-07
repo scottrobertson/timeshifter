@@ -118,6 +118,7 @@ Create a `subscriptions.json` (see `subscriptions.example.json`):
 - `titleContains` must **all** appear in the title, and `titleExcludes` (optional) must **not**. Matching is case-insensitive.
 - `from` (optional) only downloads shows that finish after that date. Leave it out to grab everything currently in the channel's archive.
 - `paddingBefore` / `paddingAfter` (optional) override the global padding for this rule.
+- `filenameTemplate` (optional) overrides the global `FILENAME_TEMPLATE` for this rule, so you can sort each subscription into its own folder, e.g. `"NASA/{title} - {date}.{ext}"`.
 - `pollIntervalMinutes` (default 10) is how often the guide is re-checked. `readyGraceMinutes` (default 0) adds an extra wait after a show ends before downloading, if your provider is slow to make catchup available.
 
 It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.

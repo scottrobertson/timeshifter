@@ -98,6 +98,7 @@ export function outputFilename(
   config: Config,
   channel: Channel,
   program: EpgProgram,
+  template: string = config.filenameTemplate,
 ): string {
   const date = program.startLocal.slice(0, 10); // YYYY-MM-DD
   const time = program.startLocal.slice(11, 16).replace(":", "-"); // HH-MM
@@ -112,7 +113,7 @@ export function outputFilename(
     ext: "ts",
   };
 
-  return config.filenameTemplate.replace(/\{(\w+)\}/g, (match, key: string) =>
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
     key in tokens ? tokens[key]! : match,
   );
 }

@@ -178,6 +178,16 @@ describe("outputFilename", () => {
     );
     assert.equal(name, "BBC One {bogus}");
   });
+
+  it("uses an explicit template over the config one", () => {
+    const name = outputFilename(
+      makeConfig({ filenameTemplate: "{title}.{ext}" }),
+      channel,
+      makeProgram({ title: "The Show" }),
+      "{channel}/{title}.{ext}",
+    );
+    assert.equal(name, "BBC One/The Show.ts");
+  });
 });
 
 describe("setFileTime", () => {

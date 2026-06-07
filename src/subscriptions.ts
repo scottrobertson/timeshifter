@@ -20,6 +20,8 @@ export interface Subscription {
   paddingBefore?: number;
   /** Minutes after the end. Falls back to the global PADDING_AFTER_MINUTES. */
   paddingAfter?: number;
+  /** Output filename template. Falls back to the global FILENAME_TEMPLATE. */
+  filenameTemplate?: string;
 }
 
 export interface WatchConfig {
@@ -75,6 +77,14 @@ function asDate(value: unknown, path: string, field: string): string | undefined
   return value;
 }
 
+function asString(value: unknown, path: string, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    fail(path, `has a "${field}" that must be a non-empty string.`);
+  }
+  return value;
+}
+
 function parseSubscription(item: unknown, index: number, path: string): Subscription {
   if (typeof item !== "object" || item === null) {
     fail(path, `has a subscription at position ${index} that isn't an object.`);
@@ -102,6 +112,7 @@ function parseSubscription(item: unknown, index: number, path: string): Subscrip
     from: asDate(obj.from, path, "from"),
     paddingBefore: asInt(obj.paddingBefore, path, "paddingBefore"),
     paddingAfter: asInt(obj.paddingAfter, path, "paddingAfter"),
+    filenameTemplate: asString(obj.filenameTemplate, path, "filenameTemplate"),
   };
 }
 
