@@ -10,7 +10,8 @@ RUN npm run build
 # Runtime stage: ffmpeg (remuxes the .ts so it seeks), node, prod deps, output.
 FROM node:26-alpine
 # tini runs as PID 1 and forwards signals, so Ctrl-C works (node as PID 1 doesn't).
-RUN apk add --no-cache ffmpeg tini
+# tzdata lets the TZ env var resolve, so log timestamps use your local time.
+RUN apk add --no-cache ffmpeg tini tzdata
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DOWNLOAD_DIR=/downloads

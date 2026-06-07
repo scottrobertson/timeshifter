@@ -36,7 +36,13 @@ function sleep(ms: number): Promise<void> {
 }
 
 function stamp(now: number): string {
-  return new Date(now).toISOString().slice(0, 19).replace("T", " ");
+  // Local time (respects the TZ env var), not UTC like toISOString would give.
+  const d = new Date(now);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
 }
 
 // A fixed-width status word so the times and titles line up in a column.

@@ -155,6 +155,7 @@ services:
       IPTV_URL: http://my-provider.com:8080
       IPTV_USERNAME: your-username
       IPTV_PASSWORD: your-password
+      TZ: Europe/London # for the log timestamps; optional
     volumes:
       - ./downloads:/downloads
       - ./subscriptions.json:/app/subscriptions.json:ro
