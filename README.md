@@ -121,7 +121,7 @@ Create a `subscriptions.json` (see `subscriptions.example.json`):
 - `filenameTemplate` (optional) overrides the global `FILENAME_TEMPLATE` for this rule, so you can sort each subscription into its own folder, e.g. `"NASA/{title} - {date}.{ext}"`.
 - `pollIntervalMinutes` (default 10) is how often the guide is re-checked. `readyGraceMinutes` (default 0) adds an extra wait after a show ends before downloading, if your provider is slow to make catchup available.
 
-It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
+It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. The file is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
 
 Then pick whichever way to run suits you:
 

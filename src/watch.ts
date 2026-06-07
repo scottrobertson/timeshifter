@@ -6,6 +6,7 @@ import { XtreamSource } from "./xtream.js";
 import { download, outputFilename, recordingWindow, setFileTime } from "./timeshift.js";
 import {
   channelMatches,
+  loadSubscriptions,
   titleMatches,
   type Subscription,
   type WatchConfig,
@@ -134,19 +135,17 @@ async function pollOnce(
   }
 }
 
-export async function runWatch(
-  config: Config,
-  watch: WatchConfig,
-  dryRun = false,
-): Promise<void> {
+export async function runWatch(config: Config, dryRun = false): Promise<void> {
   const source: Source = new XtreamSource(config);
   console.log(await source.connect());
+
+  // Loaded fresh each loop so edits to the file are picked up without a restart.
+  let watch = loadSubscriptions(config.subscriptionsFile);
   console.log(
     `${dryRun ? "Dry run: watching" : "Watching"} ${watch.subscriptions.length} subscription(s), ` +
       `polling every ${watch.pollIntervalMinutes} min.${dryRun ? " Nothing will be downloaded." : ""}`,
   );
 
-  const intervalMs = watch.pollIntervalMinutes * 60_000;
   for (;;) {
     try {
       await pollOnce(config, source, watch, dryRun);
@@ -154,7 +153,18 @@ export async function runWatch(
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[${stamp(Date.now())}] ⚠️  Poll failed: ${message}`);
     }
+
+    const intervalMs = watch.pollIntervalMinutes * 60_000;
     console.log(`\nNext poll at ${stamp(Date.now() + intervalMs)}.`);
     await sleep(intervalMs);
+
+    // Re-read for the next round. Keep the last good config if the file is
+    // mid-edit or broken, so a typo doesn't take the watcher down.
+    try {
+      watch = loadSubscriptions(config.subscriptionsFile);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[${stamp(Date.now())}] ⚠️  Couldn't reload subscriptions, keeping the previous ones: ${message}`);
+    }
   }
 }

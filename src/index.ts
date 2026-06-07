@@ -1,14 +1,13 @@
 #!/usr/bin/env -S npx tsx
 import { loadConfig } from "./config.js";
 import { run } from "./cli.js";
-import { loadSubscriptions } from "./subscriptions.js";
 import { runWatch } from "./watch.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
   if (process.argv[2] === "watch") {
     const dryRun = process.argv.includes("--dry-run") || process.argv.includes("-n");
-    await runWatch(config, loadSubscriptions(config.subscriptionsFile), dryRun);
+    await runWatch(config, dryRun);
     return;
   }
   await run(config);
