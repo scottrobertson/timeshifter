@@ -145,6 +145,12 @@ export async function streamToFile(
   }
   const expectedBytes = Number(response.headers.get("content-length")) || null;
 
+  // On a TTY we redraw a progress bar in place a few times a second. Without one
+  // (e.g. Docker logs), \r-redraws never flush, so we print a plain line less
+  // often instead so progress still shows up.
+  const tty = Boolean(process.stdout.isTTY);
+  const renderEvery = tty ? 250 : 5000;
+
   const startedAt = Date.now();
   let bytesDownloaded = 0;
   let lastRender = 0;
@@ -152,8 +158,8 @@ export async function streamToFile(
     transform(chunk: Buffer, _encoding, callback) {
       bytesDownloaded += chunk.length;
       const now = Date.now();
-      if (now - lastRender >= 250) {
-        renderDownloadProgress(bytesDownloaded, expectedBytes, startedAt);
+      if (now - lastRender >= renderEvery) {
+        renderDownloadProgress(bytesDownloaded, expectedBytes, startedAt, tty);
         lastRender = now;
       }
       callback(null, chunk);
@@ -173,8 +179,12 @@ export async function streamToFile(
       throw err;
     }
   }
-  renderDownloadProgress(bytesDownloaded, expectedBytes, startedAt);
-  process.stdout.write("\n");
+  // On a TTY, draw the final frame and close the redraw line. Without one, the
+  // "Downloaded" summary that follows is enough, so skip a near-duplicate line.
+  if (tty) {
+    renderDownloadProgress(bytesDownloaded, expectedBytes, startedAt, tty);
+    process.stdout.write("\n");
+  }
 
   return { bytesDownloaded, expectedBytes };
 }
@@ -296,27 +306,28 @@ function renderDownloadProgress(
   downloaded: number,
   total: number | null,
   startedAt: number,
+  tty: boolean,
 ): void {
   const gb = (n: number) => (n / 1e9).toFixed(2);
   const elapsed = Math.max(0.001, (Date.now() - startedAt) / 1000);
   const speed = downloaded / elapsed; // bytes/sec
   const speedText = `${(speed / 1e6).toFixed(0)} MB/s`;
 
+  let line: string;
   if (!total) {
-    process.stdout.write(`\r  ${gb(downloaded)} GB  ${speedText}   `);
-    return;
+    line = `${gb(downloaded)} GB  ${speedText}`;
+  } else {
+    const fraction = Math.min(1, downloaded / total);
+    const width = 28;
+    const filled = Math.round(fraction * width);
+    const bar = "█".repeat(filled) + "░".repeat(width - filled);
+    const pct = String(Math.floor(fraction * 100)).padStart(3);
+    const eta = speed > 0 ? formatDuration((total - downloaded) / speed) : "—";
+    line = `${bar} ${pct}%  ${gb(downloaded)}/${gb(total)} GB  ${speedText}  ETA ${eta}`;
   }
 
-  const fraction = Math.min(1, downloaded / total);
-  const width = 28;
-  const filled = Math.round(fraction * width);
-  const bar = "█".repeat(filled) + "░".repeat(width - filled);
-  const pct = String(Math.floor(fraction * 100)).padStart(3);
-  const eta = speed > 0 ? formatDuration((total - downloaded) / speed) : "—";
-
-  process.stdout.write(
-    `\r  ${bar} ${pct}%  ${gb(downloaded)}/${gb(total)} GB  ${speedText}  ETA ${eta}   `,
-  );
+  // TTY: redraw in place. Otherwise: a plain line that actually flushes to logs.
+  process.stdout.write(tty ? `\r  ${line}   ` : `  ${line}\n`);
 }
 
 /** Set a file's modified (and access) time, e.g. to when a program aired. */
