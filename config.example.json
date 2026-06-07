@@ -1,0 +1,25 @@
+{
+  "url": "http://my-provider.com:8080",
+  "username": "your-username",
+  "password": "your-password",
+  "downloadDir": "/catchup",
+  "timeshiftMode": "path",
+  "paddingBefore": 0,
+  "paddingAfter": 0,
+  "filenameTemplate": "{channel} - {title} - {datetime}.{ext}",
+  "setAiredTime": true,
+  "watch": {
+    "pollIntervalMinutes": 10,
+    "readyGraceMinutes": 0,
+    "subscriptions": [
+      {
+        "name": "NASA launches",
+        "channel": "NASA TV",
+        "titleContains": ["Launch", "Live"],
+        "from": "2026-06-01",
+        "paddingBefore": 5,
+        "paddingAfter": 30
+      }
+    ]
+  }
+}

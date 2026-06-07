@@ -14,12 +14,10 @@ FROM node:26-alpine
 RUN apk add --no-cache ffmpeg tini tzdata
 WORKDIR /app
 ENV NODE_ENV=production
-ENV DOWNLOAD_DIR=/downloads
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
-VOLUME ["/downloads"]
 ENTRYPOINT ["/sbin/tini", "--", "node", "dist/index.js"]

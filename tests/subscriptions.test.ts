@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   channelMatches,
-  loadSubscriptions,
+  loadWatchConfig,
   matchesProgram,
   titleMatches,
   type Subscription,
@@ -68,21 +68,20 @@ describe("matchesProgram", () => {
   });
 });
 
-describe("loadSubscriptions", () => {
-  async function writeTemp(contents: string): Promise<string> {
-    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-subs-"));
-    const file = path.join(dir, "subscriptions.json");
+describe("loadWatchConfig", () => {
+  async function writeTemp(watch: unknown): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-config-"));
+    const file = path.join(dir, "config.json");
+    const contents = typeof watch === "string" ? watch : JSON.stringify({ watch });
     await writeFile(file, contents);
     return file;
   }
 
-  it("parses a valid file and applies defaults", async () => {
-    const file = await writeTemp(
-      JSON.stringify({
-        subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: ["Launch"] }],
-      }),
-    );
-    const config = loadSubscriptions(file);
+  it("parses a valid watch block and applies defaults", async () => {
+    const file = await writeTemp({
+      subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: ["Launch"] }],
+    });
+    const config = loadWatchConfig(file);
     assert.equal(config.pollIntervalMinutes, 10);
     assert.equal(config.readyGraceMinutes, 0);
     assert.equal(config.subscriptions.length, 1);
@@ -90,46 +89,47 @@ describe("loadSubscriptions", () => {
   });
 
   it("keeps an explicit poll interval and from date", async () => {
-    const file = await writeTemp(
-      JSON.stringify({
-        pollIntervalMinutes: 5,
-        subscriptions: [
-          { name: "Launches", channel: "NASA TV", titleContains: ["Launch"], from: "2026-06-01" },
-        ],
-      }),
-    );
-    const config = loadSubscriptions(file);
+    const file = await writeTemp({
+      pollIntervalMinutes: 5,
+      subscriptions: [
+        { name: "Launches", channel: "NASA TV", titleContains: ["Launch"], from: "2026-06-01" },
+      ],
+    });
+    const config = loadWatchConfig(file);
     assert.equal(config.pollIntervalMinutes, 5);
     assert.equal(config.subscriptions[0]!.from, "2026-06-01");
   });
 
   it("throws when the file is missing", () => {
-    assert.throws(() => loadSubscriptions("/no/such/subscriptions.json"), /Couldn't read/);
+    assert.throws(() => loadWatchConfig("/no/such/config.json"), /Couldn't read/);
   });
 
   it("throws on invalid JSON", async () => {
     const file = await writeTemp("{ not json");
-    assert.throws(() => loadSubscriptions(file), /isn't valid JSON/);
+    assert.throws(() => loadWatchConfig(file), /isn't valid JSON/);
+  });
+
+  it("throws when the watch block is missing", async () => {
+    const file = await writeTemp(JSON.stringify({ url: "http://example.com" }));
+    assert.throws(() => loadWatchConfig(file), /needs a "watch" object/);
   });
 
   it("throws when subscriptions is empty", async () => {
-    const file = await writeTemp(JSON.stringify({ subscriptions: [] }));
-    assert.throws(() => loadSubscriptions(file), /non-empty "subscriptions"/);
+    const file = await writeTemp({ subscriptions: [] });
+    assert.throws(() => loadWatchConfig(file), /non-empty "watch.subscriptions"/);
   });
 
   it("throws when titleContains is empty", async () => {
-    const file = await writeTemp(
-      JSON.stringify({ subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: [] }] }),
-    );
-    assert.throws(() => loadSubscriptions(file), /empty "titleContains"/);
+    const file = await writeTemp({
+      subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: [] }],
+    });
+    assert.throws(() => loadWatchConfig(file), /empty "titleContains"/);
   });
 
   it("throws on an invalid from date", async () => {
-    const file = await writeTemp(
-      JSON.stringify({
-        subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: ["x"], from: "not-a-date" }],
-      }),
-    );
-    assert.throws(() => loadSubscriptions(file), /"from" that must be a date/);
+    const file = await writeTemp({
+      subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: ["x"], from: "not-a-date" }],
+    });
+    assert.throws(() => loadWatchConfig(file), /"from" that must be a date/);
   });
 });

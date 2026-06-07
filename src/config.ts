@@ -1,4 +1,4 @@
-import "dotenv/config";
+import { readFileSync } from "node:fs";
 
 export type TimeshiftMode = "path" | "php";
 
@@ -17,68 +17,96 @@ export interface Config {
   filenameTemplate: string;
   /** Set the downloaded file's modified time to when the program aired. */
   setAiredTime: boolean;
-  /** Path to the subscriptions file used by `watch` mode. */
-  subscriptionsFile: string;
 }
+
+export const DEFAULT_CONFIG_FILE = "config.json";
 
 const DEFAULT_FILENAME_TEMPLATE = "{channel} - {title} - {datetime}.{ext}";
 // Many panels drop connections from clients that don't look like a real player,
 // especially on long downloads. A VLC user agent is a safe default.
 const DEFAULT_USER_AGENT = "VLC/3.0.18 LibVLC/3.0.18";
 
-function required(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
+function fail(detail: string): never {
+  throw new Error(`config.json ${detail}`);
+}
+
+/** Read and JSON-parse the config file, with friendly errors. Shared with subscriptions. */
+export function readConfigFile(file = DEFAULT_CONFIG_FILE): Record<string, unknown> {
+  let raw: string;
+  try {
+    raw = readFileSync(file, "utf8");
+  } catch {
     throw new Error(
-      `Missing ${name}. Copy .env.example to .env and fill in your provider details.`,
+      `Couldn't read ${file}. Copy config.example.json to config.json and fill in your provider details.`,
     );
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    fail(`isn't valid JSON: ${(err as Error).message}`);
+  }
+
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    fail(`must be a JSON object.`);
+  }
+  return data as Record<string, unknown>;
+}
+
+function requiredString(obj: Record<string, unknown>, field: string): string {
+  const value = obj[field];
+  if (typeof value !== "string" || !value.trim()) {
+    fail(`is missing a "${field}". Copy config.example.json and fill in your provider details.`);
+  }
+  return value.trim();
+}
+
+function optionalString(obj: Record<string, unknown>, field: string, fallback: string): string {
+  const value = obj[field];
+  if (value === undefined) return fallback;
+  if (typeof value !== "string" || !value.trim()) {
+    fail(`has a "${field}" that must be a non-empty string.`);
+  }
+  return value.trim();
+}
+
+function optionalInt(obj: Record<string, unknown>, field: string, fallback: number): number {
+  const value = obj[field];
+  if (value === undefined) return fallback;
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    fail(`has a "${field}" that must be a whole number of minutes.`);
   }
   return value;
 }
 
-function boolean(name: string, fallback = false): boolean {
-  const raw = process.env[name]?.trim().toLowerCase();
-  if (!raw) return fallback;
-  if (raw === "1" || raw === "true" || raw === "yes") return true;
-  if (raw === "0" || raw === "false" || raw === "no") return false;
-  return fallback;
-}
-
-function intMinutes(name: string): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return 0;
-  const n = Number(raw);
-  if (!Number.isInteger(n)) {
-    throw new Error(`${name} must be a whole number of minutes, got "${raw}"`);
+function optionalBoolean(obj: Record<string, unknown>, field: string, fallback: boolean): boolean {
+  const value = obj[field];
+  if (value === undefined) return fallback;
+  if (typeof value !== "boolean") {
+    fail(`has a "${field}" that must be true or false.`);
   }
-  return n;
+  return value;
 }
 
-export function loadConfig(): Config {
-  const baseUrl = required("IPTV_URL").replace(/\/+$/, "");
-  const username = required("IPTV_USERNAME");
-  const password = required("IPTV_PASSWORD");
+export function loadConfig(file = DEFAULT_CONFIG_FILE): Config {
+  const obj = readConfigFile(file);
 
-  const timeshiftMode = (process.env.TIMESHIFT_MODE?.trim() ||
-    "path") as TimeshiftMode;
+  const timeshiftMode = (optionalString(obj, "timeshiftMode", "path")) as TimeshiftMode;
   if (timeshiftMode !== "path" && timeshiftMode !== "php") {
-    throw new Error(
-      `TIMESHIFT_MODE must be "path" or "php", got "${timeshiftMode}"`,
-    );
+    fail(`has a "timeshiftMode" that must be "path" or "php", got "${timeshiftMode}".`);
   }
 
   return {
-    baseUrl,
-    username,
-    password,
-    downloadDir: process.env.DOWNLOAD_DIR?.trim() || "downloads",
-    userAgent: process.env.IPTV_USER_AGENT?.trim() || DEFAULT_USER_AGENT,
+    baseUrl: requiredString(obj, "url").replace(/\/+$/, ""),
+    username: requiredString(obj, "username"),
+    password: requiredString(obj, "password"),
+    downloadDir: requiredString(obj, "downloadDir"),
+    userAgent: optionalString(obj, "userAgent", DEFAULT_USER_AGENT),
     timeshiftMode,
-    paddingBefore: intMinutes("PADDING_BEFORE_MINUTES"),
-    paddingAfter: intMinutes("PADDING_AFTER_MINUTES"),
-    filenameTemplate:
-      process.env.FILENAME_TEMPLATE?.trim() || DEFAULT_FILENAME_TEMPLATE,
-    setAiredTime: boolean("SET_AIRED_TIME", true),
-    subscriptionsFile: process.env.SUBSCRIPTIONS_FILE?.trim() || "subscriptions.json",
+    paddingBefore: optionalInt(obj, "paddingBefore", 0),
+    paddingAfter: optionalInt(obj, "paddingAfter", 0),
+    filenameTemplate: optionalString(obj, "filenameTemplate", DEFAULT_FILENAME_TEMPLATE),
+    setAiredTime: optionalBoolean(obj, "setAiredTime", true),
   };
 }

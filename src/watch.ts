@@ -6,7 +6,7 @@ import { XtreamSource } from "./xtream.js";
 import { download, outputFilename, recordingWindow, setFileTime } from "./timeshift.js";
 import {
   channelMatches,
-  loadSubscriptions,
+  loadWatchConfig,
   titleMatches,
   type Subscription,
   type WatchConfig,
@@ -146,7 +146,7 @@ export async function runWatch(config: Config, dryRun = false): Promise<void> {
   console.log(await source.connect());
 
   // Loaded fresh each loop so edits to the file are picked up without a restart.
-  let watch = loadSubscriptions(config.subscriptionsFile);
+  let watch = loadWatchConfig();
   console.log(
     `${dryRun ? "Dry run: watching" : "Watching"} ${watch.subscriptions.length} subscription(s), ` +
       `polling every ${watch.pollIntervalMinutes} min.${dryRun ? " Nothing will be downloaded." : ""}`,
@@ -167,7 +167,7 @@ export async function runWatch(config: Config, dryRun = false): Promise<void> {
     // Re-read for the next round. Keep the last good config if the file is
     // mid-edit or broken, so a typo doesn't take the watcher down.
     try {
-      watch = loadSubscriptions(config.subscriptionsFile);
+      watch = loadWatchConfig();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[${stamp(Date.now())}] ⚠️  Couldn't reload subscriptions, keeping the previous ones: ${message}`);

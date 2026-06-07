@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readConfigFile, DEFAULT_CONFIG_FILE } from "./config.js";
 import type { Channel } from "./source.js";
 
 /** A rule describing which programs to download automatically in watch mode. */
@@ -16,11 +16,11 @@ export interface Subscription {
    * "2026-06-01T13:00"). Omit to download everything in the channel's archive.
    */
   from?: string;
-  /** Minutes before the start. Falls back to the global PADDING_BEFORE_MINUTES. */
+  /** Minutes before the start. Falls back to the global paddingBefore. */
   paddingBefore?: number;
-  /** Minutes after the end. Falls back to the global PADDING_AFTER_MINUTES. */
+  /** Minutes after the end. Falls back to the global paddingAfter. */
   paddingAfter?: number;
-  /** Output filename template. Falls back to the global FILENAME_TEMPLATE. */
+  /** Output filename template. Falls back to the global filenameTemplate. */
   filenameTemplate?: string;
 }
 
@@ -50,56 +50,56 @@ export function matchesProgram(sub: Subscription, channel: Channel, title: strin
   return channelMatches(sub, channel) && titleMatches(sub, title);
 }
 
-function fail(path: string, detail: string): never {
-  throw new Error(`The subscriptions file at "${path}" ${detail}`);
+function fail(detail: string): never {
+  throw new Error(`config.json ${detail}`);
 }
 
-function asStringArray(value: unknown, path: string, field: string): string[] {
+function asStringArray(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
-    fail(path, `has a "${field}" that must be an array of strings.`);
+    fail(`has a "${field}" that must be an array of strings.`);
   }
   return value as string[];
 }
 
-function asInt(value: unknown, path: string, field: string): number | undefined {
+function asInt(value: unknown, field: string): number | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value)) {
-    fail(path, `has a "${field}" that must be a whole number.`);
+    fail(`has a "${field}" that must be a whole number.`);
   }
   return value;
 }
 
-function asDate(value: unknown, path: string, field: string): string | undefined {
+function asDate(value: unknown, field: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
-    fail(path, `has a "${field}" that must be a date like "2026-06-01" or "2026-06-01T13:00".`);
+    fail(`has a "${field}" that must be a date like "2026-06-01" or "2026-06-01T13:00".`);
   }
   return value;
 }
 
-function asString(value: unknown, path: string, field: string): string | undefined {
+function asString(value: unknown, field: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !value.trim()) {
-    fail(path, `has a "${field}" that must be a non-empty string.`);
+    fail(`has a "${field}" that must be a non-empty string.`);
   }
   return value;
 }
 
-function parseSubscription(item: unknown, index: number, path: string): Subscription {
+function parseSubscription(item: unknown, index: number): Subscription {
   if (typeof item !== "object" || item === null) {
-    fail(path, `has a subscription at position ${index} that isn't an object.`);
+    fail(`has a subscription at position ${index} that isn't an object.`);
   }
   const obj = item as Record<string, unknown>;
 
   if (typeof obj.name !== "string" || !obj.name.trim()) {
-    fail(path, `has a subscription at position ${index} missing a "name".`);
+    fail(`has a subscription at position ${index} missing a "name".`);
   }
   if (typeof obj.channel !== "string" || !obj.channel.trim()) {
-    fail(path, `has a subscription ("${obj.name}") missing a "channel".`);
+    fail(`has a subscription ("${obj.name}") missing a "channel".`);
   }
-  const titleContains = asStringArray(obj.titleContains, path, "titleContains");
+  const titleContains = asStringArray(obj.titleContains, "titleContains");
   if (titleContains.length === 0) {
-    fail(path, `has a subscription ("${obj.name}") with an empty "titleContains".`);
+    fail(`has a subscription ("${obj.name}") with an empty "titleContains".`);
   }
 
   return {
@@ -108,41 +108,31 @@ function parseSubscription(item: unknown, index: number, path: string): Subscrip
     titleContains,
     titleExcludes: obj.titleExcludes === undefined
       ? undefined
-      : asStringArray(obj.titleExcludes, path, "titleExcludes"),
-    from: asDate(obj.from, path, "from"),
-    paddingBefore: asInt(obj.paddingBefore, path, "paddingBefore"),
-    paddingAfter: asInt(obj.paddingAfter, path, "paddingAfter"),
-    filenameTemplate: asString(obj.filenameTemplate, path, "filenameTemplate"),
+      : asStringArray(obj.titleExcludes, "titleExcludes"),
+    from: asDate(obj.from, "from"),
+    paddingBefore: asInt(obj.paddingBefore, "paddingBefore"),
+    paddingAfter: asInt(obj.paddingAfter, "paddingAfter"),
+    filenameTemplate: asString(obj.filenameTemplate, "filenameTemplate"),
   };
 }
 
-/** Read and validate the watch-mode subscriptions file. Throws with a clear message. */
-export function loadSubscriptions(path: string): WatchConfig {
-  let raw: string;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch {
-    throw new Error(
-      `Couldn't read the subscriptions file at "${path}". ` +
-        `Set SUBSCRIPTIONS_FILE or create it (see subscriptions.example.json).`,
-    );
-  }
+/** Read and validate the "watch" block of the config file. Throws with a clear message. */
+export function loadWatchConfig(file = DEFAULT_CONFIG_FILE): WatchConfig {
+  const config = readConfigFile(file);
 
-  let data: unknown;
-  try {
-    data = JSON.parse(raw);
-  } catch (err) {
-    fail(path, `isn't valid JSON: ${(err as Error).message}`);
+  const watch = config.watch;
+  if (typeof watch !== "object" || watch === null || Array.isArray(watch)) {
+    fail(`needs a "watch" object for watch mode (see config.example.json).`);
   }
+  const obj = watch as Record<string, unknown>;
 
-  const obj = (data ?? {}) as Record<string, unknown>;
   if (!Array.isArray(obj.subscriptions) || obj.subscriptions.length === 0) {
-    fail(path, `needs a non-empty "subscriptions" array.`);
+    fail(`needs a non-empty "watch.subscriptions" array.`);
   }
 
   return {
-    pollIntervalMinutes: asInt(obj.pollIntervalMinutes, path, "pollIntervalMinutes") ?? 10,
-    readyGraceMinutes: asInt(obj.readyGraceMinutes, path, "readyGraceMinutes") ?? 0,
-    subscriptions: (obj.subscriptions as unknown[]).map((item, i) => parseSubscription(item, i, path)),
+    pollIntervalMinutes: asInt(obj.pollIntervalMinutes, "pollIntervalMinutes") ?? 10,
+    readyGraceMinutes: asInt(obj.readyGraceMinutes, "readyGraceMinutes") ?? 0,
+    subscriptions: (obj.subscriptions as unknown[]).map((item, i) => parseSubscription(item, i)),
   };
 }

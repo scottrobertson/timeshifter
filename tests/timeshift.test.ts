@@ -26,7 +26,6 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     paddingAfter: 0,
     filenameTemplate: "{channel} - {title} - {datetime}.{ext}",
     setAiredTime: true,
-    subscriptionsFile: "subscriptions.json",
     ...overrides,
   };
 }

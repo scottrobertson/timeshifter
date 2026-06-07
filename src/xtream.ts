@@ -93,7 +93,7 @@ export class XtreamSource implements Source {
 
     const info = data.user_info;
     if (!info || info.auth === 0) {
-      throw new Error("Authentication failed. Check IPTV_URL, username and password.");
+      throw new Error("Authentication failed. Check the url, username and password in config.json.");
     }
 
     this.timezone = data.server_info?.timezone || undefined;

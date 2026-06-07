@@ -25,15 +25,30 @@ For now it works with Xtream Codes providers (the most common kind, where you lo
 
 ## Setup
 
-Create a `.env` file with your provider's base URL (including port), username and password:
+Everything lives in a single `config.json` in the working directory. Copy the example and fill in your provider's base URL (including port), username, password, and where to save downloads:
 
-```
-IPTV_URL=http://my-provider.com:8080
-IPTV_USERNAME=your-username
-IPTV_PASSWORD=your-password
+```json
+{
+  "url": "http://my-provider.com:8080",
+  "username": "your-username",
+  "password": "your-password",
+  "downloadDir": "/catchup"
+}
 ```
 
-That's all you need to get going. See [`.env.example`](.env.example) for the optional settings (padding, filename template, user agent, and so on). If you've cloned the repo, you can `cp .env.example .env` instead.
+If you've cloned the repo, run `cp config.example.json config.json` and edit it.
+
+`url`, `username`, `password` and `downloadDir` are required. Everything else is optional:
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `downloadDir` | (required) | Where recordings are saved. Can be relative or absolute. |
+| `userAgent` | `VLC/3.0.18 LibVLC/3.0.18` | User agent sent with every request. Many panels drop clients that don't look like a real player, so a VLC string is the default. |
+| `timeshiftMode` | `path` | Timeshift URL style. Most panels use `path`; a few older ones use `php`. |
+| `paddingBefore` / `paddingAfter` | `0` | Minutes added before the start and after the end of each recording, in case the guide times are off. A negative number does the opposite (starts late, ends early). You can also change these per-download at the confirm prompt. |
+| `filenameTemplate` | `{channel} - {title} - {datetime}.{ext}` | How files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. Supports subfolders, e.g. `{channel}/{title} - {date}.{ext}`. |
+| `setAiredTime` | `true` | Set the file's modified time to when the show aired, so it sorts by air date in a media library. Set to `false` to keep the download time. |
+| `watch` | — | Watch-mode rules. See [Watch mode](#watch-mode-automatic-downloads). |
 
 ## Interactive mode (pick a show)
 
@@ -44,12 +59,12 @@ Pick whichever way to run suits you:
 <details>
 <summary><strong>Run with Docker</strong></summary>
 
-There's a prebuilt image, so there's nothing to install. It's an interactive CLI, so run it with `-it`, pass your `.env`, and mount a folder for the downloads:
+There's a prebuilt image, so there's nothing to install. It's an interactive CLI, so run it with `-it`, mount your `config.json`, and mount a folder for the downloads (set `downloadDir` in the config to wherever you mount it, e.g. `/catchup`):
 
 ```
 docker run -it --rm \
-  --env-file .env \
-  -v "$(pwd)/downloads:/downloads" \
+  -v "$(pwd)/config.json:/app/config.json:ro" \
+  -v "$(pwd)/downloads:/catchup" \
   ghcr.io/scottrobertson/timeshifter:latest
 ```
 
@@ -64,12 +79,9 @@ Because it's an interactive CLI, use `run` (not `up`):
 services:
   timeshifter:
     image: ghcr.io/scottrobertson/timeshifter:latest
-    environment:
-      IPTV_URL: http://my-provider.com:8080
-      IPTV_USERNAME: your-username
-      IPTV_PASSWORD: your-password
     volumes:
-      - ./downloads:/downloads
+      - ./config.json:/app/config.json:ro
+      - ./downloads:/catchup
     stdin_open: true
     tty: true
 ```
@@ -96,21 +108,27 @@ npm start
 
 Instead of picking shows by hand, you can let timeshifter watch the guide and download anything that matches a set of rules, as soon as it has finished airing. Good for "grab every NASA launch" type things.
 
-Create a `subscriptions.json` (see `subscriptions.example.json`):
+Add a `watch` block to your `config.json` (see `config.example.json`):
 
 ```json
 {
-  "pollIntervalMinutes": 10,
-  "subscriptions": [
-    {
-      "name": "NASA launches",
-      "channel": "NASA TV",
-      "titleContains": ["Launch", "Live"],
-      "from": "2026-06-01",
-      "paddingBefore": 5,
-      "paddingAfter": 30
-    }
-  ]
+  "url": "http://my-provider.com:8080",
+  "username": "your-username",
+  "password": "your-password",
+  "downloadDir": "/catchup",
+  "watch": {
+    "pollIntervalMinutes": 10,
+    "subscriptions": [
+      {
+        "name": "NASA launches",
+        "channel": "NASA TV",
+        "titleContains": ["Launch", "Live"],
+        "from": "2026-06-01",
+        "paddingBefore": 5,
+        "paddingAfter": 30
+      }
+    ]
+  }
 }
 ```
 
@@ -118,23 +136,22 @@ Create a `subscriptions.json` (see `subscriptions.example.json`):
 - `titleContains` must **all** appear in the title, and `titleExcludes` (optional) must **not**. Matching is case-insensitive.
 - `from` (optional) only downloads shows that finish after that date. Leave it out to grab everything currently in the channel's archive.
 - `paddingBefore` / `paddingAfter` (optional) override the global padding for this rule.
-- `filenameTemplate` (optional) overrides the global `FILENAME_TEMPLATE` for this rule, so you can sort each subscription into its own folder, e.g. `"NASA/{title} - {date}.{ext}"`.
+- `filenameTemplate` (optional) overrides the global `filenameTemplate` for this rule, so you can sort each subscription into its own folder, e.g. `"NASA/{title} - {date}.{ext}"`.
 - `pollIntervalMinutes` (default 10) is how often the guide is re-checked. `readyGraceMinutes` (default 0) adds an extra wait after a show ends before downloading, if your provider is slow to make catchup available.
 
-It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. The file is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
+It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. `config.json` is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
 
 Then pick whichever way to run suits you:
 
 <details>
 <summary><strong>Run with Docker</strong></summary>
 
-It's a long-running process, so run it detached (no `-it`) and mount the subscriptions file:
+It's a long-running process, so run it detached (no `-it`). The subscriptions live in `config.json`, so there's just the one file to mount:
 
 ```
 docker run -d --restart unless-stopped \
-  --env-file .env \
-  -v "$(pwd)/downloads:/downloads" \
-  -v "$(pwd)/subscriptions.json:/app/subscriptions.json:ro" \
+  -v "$(pwd)/config.json:/app/config.json:ro" \
+  -v "$(pwd)/downloads:/catchup" \
   ghcr.io/scottrobertson/timeshifter:latest watch
 ```
 
@@ -152,13 +169,10 @@ services:
     command: watch
     restart: unless-stopped
     environment:
-      IPTV_URL: http://my-provider.com:8080
-      IPTV_USERNAME: your-username
-      IPTV_PASSWORD: your-password
       TZ: Europe/London # for the log timestamps; optional
     volumes:
-      - ./downloads:/downloads
-      - ./subscriptions.json:/app/subscriptions.json:ro
+      - ./config.json:/app/config.json:ro
+      - ./downloads:/catchup
 ```
 
 ```
@@ -181,12 +195,12 @@ npm start watch
 
 ## Notes / troubleshooting
 
-- **403 / forbidden or dropped downloads:** requests are sent with a VLC user agent by default, since many providers block or cut off clients that don't look like a real player. If yours expects something specific, override it with `IPTV_USER_AGENT` in `.env`.
-- **Timeshift URL style:** most panels use the default path style. If downloads fail with a valid account, try `TIMESHIFT_MODE=php`.
-- **Padding:** `PADDING_BEFORE_MINUTES` / `PADDING_AFTER_MINUTES` start the recording early and end it late, in case the guide times are off. A negative number does the opposite (starts late, ends early). These are the defaults; you can also change them per-download at the confirm prompt. A still-airing show's end is capped at the current time.
-- **Filename:** set `FILENAME_TEMPLATE` to control how files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to `{channel} - {title} - {datetime}.{ext}`.
-- **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `SET_AIRED_TIME=false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
-- **Times** in the guide, filenames and the timeshift URL are all the provider's local time, which is what the endpoint expects. So no timezone conversion happens, and the label (e.g. `Europe/London`) shows which timezone those times are in.
+- **403 / forbidden or dropped downloads:** requests are sent with a VLC user agent by default, since many providers block or cut off clients that don't look like a real player. If yours expects something specific, set `userAgent` in `config.json`.
+- **Timeshift URL style:** most panels use the default path style. If downloads fail with a valid account, try `"timeshiftMode": "php"`.
+- **Padding:** `paddingBefore` / `paddingAfter` start the recording early and end it late, in case the guide times are off. A negative number does the opposite (starts late, ends early). These are the defaults; you can also change them per-download at the confirm prompt. A still-airing show's end is capped at the current time.
+- **Filename:** set `filenameTemplate` to control how files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to `{channel} - {title} - {datetime}.{ext}`.
+- **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `"setAiredTime": false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
+- **Timezone:** set the `TZ` environment variable (e.g. `Europe/London`) to control the timezone of the watch-mode log timestamps; it defaults to UTC. The Docker image bundles the zone data. Guide and recording times are unaffected; they always use the provider's own local time, which is what the endpoint expects, so no timezone conversion happens.
 
 ## Built with Claude
 
