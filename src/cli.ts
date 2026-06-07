@@ -14,6 +14,15 @@ function formatProgramTime(program: EpgProgram): string {
   return program.startLocal.slice(0, 16);
 }
 
+export function formatProgramTimeRange(program: EpgProgram): string {
+  // "YYYY-MM-DD HH:MM-HH:MM", but if the show ends on a different day, show the
+  // end date too: "YYYY-MM-DD HH:MM-YYYY-MM-DD HH:MM".
+  const start = program.startLocal.slice(0, 16);
+  const sameDay = program.startLocal.slice(0, 10) === program.endLocal.slice(0, 10);
+  const end = sameDay ? program.endLocal.slice(11, 16) : program.endLocal.slice(0, 16);
+  return `${start}-${end}`;
+}
+
 async function pickChannel(channels: Channel[]): Promise<Channel> {
   // Channels are grouped by category (provider order); show the group inline.
   const label = (c: Channel): string =>
@@ -47,7 +56,7 @@ async function pickProgram(
     const airing = program.start.getTime() <= now && program.end.getTime() > now;
     const suffix = airing ? "  [now airing — partial]" : "";
     return {
-      name: `${formatProgramTime(program)}${tz} · ${program.title}${suffix}`,
+      name: `${formatProgramTimeRange(program)}${tz} · ${program.title}${suffix}`,
       value: index,
       description: program.description || undefined,
     };
