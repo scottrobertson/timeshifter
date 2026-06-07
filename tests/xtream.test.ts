@@ -153,6 +153,17 @@ describe("dedupeOverlapping", () => {
     assert.equal(out.length, 2);
   });
 
+  it("keeps back-to-back same-title shows separate", () => {
+    // Sequential episodes that only touch at the boundary don't overlap, so
+    // they're kept as distinct shows rather than merged into one.
+    const out = dedupeOverlapping([
+      p("Launch", 10 * H, 11 * H),
+      p("Launch", 11 * H, 12 * H),
+      p("Launch", 12 * H, 13 * H),
+    ]);
+    assert.equal(out.length, 3);
+  });
+
   it("does not collapse two same-title shows with a different one in between", () => {
     // The two "Launch" entries don't overlap each other, so even though a
     // differently-named show sits between them in time, they stay separate.
