@@ -152,4 +152,17 @@ describe("dedupeOverlapping", () => {
     const out = dedupeOverlapping([p("Launch", 10 * H, 11 * H), p("Docking", 10 * H, 11 * H)]);
     assert.equal(out.length, 2);
   });
+
+  it("does not collapse two same-title shows with a different one in between", () => {
+    // The two "Launch" entries don't overlap each other, so even though a
+    // differently-named show sits between them in time, they stay separate.
+    const out = dedupeOverlapping([
+      p("Launch", 10 * H, 11 * H),
+      p("Docking", 11 * H, 12 * H),
+      p("Launch", 13 * H, 14 * H),
+    ]);
+    assert.equal(out.length, 3);
+    const launches = out.filter((x) => x.title === "Launch").map((x) => x.start.getTime());
+    assert.deepEqual(launches.sort(), [10 * H, 13 * H]);
+  });
 });
