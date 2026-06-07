@@ -4,3 +4,4 @@ downloads/
 .env
 *.log
 .DS_Store
+subscriptions.json

@@ -1,0 +1,13 @@
+{
+  "pollIntervalMinutes": 10,
+  "subscriptions": [
+    {
+      "name": "F1 races",
+      "channel": "UK: Sky Sports F1 FHD",
+      "titleContains": ["Formula 1", "ᴸᶦᵛᵉ"],
+      "from": "2026-06-01",
+      "paddingBefore": 5,
+      "paddingAfter": 30
+    }
+  ]
+}

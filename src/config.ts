@@ -17,9 +17,14 @@ export interface Config {
   filenameTemplate: string;
   /** Set the downloaded file's modified time to when the program aired. */
   setAiredTime: boolean;
+  /** Path to the subscriptions file used by `watch` mode. */
+  subscriptionsFile: string;
 }
 
 const DEFAULT_FILENAME_TEMPLATE = "{channel} - {title} - {datetime}.{ext}";
+// Many panels drop connections from clients that don't look like a real player,
+// especially on long downloads. A VLC user agent is a safe default.
+const DEFAULT_USER_AGENT = "VLC/3.0.18 LibVLC/3.0.18";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -67,12 +72,13 @@ export function loadConfig(): Config {
     username,
     password,
     downloadDir: process.env.DOWNLOAD_DIR?.trim() || "downloads",
-    userAgent: process.env.IPTV_USER_AGENT?.trim() || undefined,
+    userAgent: process.env.IPTV_USER_AGENT?.trim() || DEFAULT_USER_AGENT,
     timeshiftMode,
     paddingBefore: intMinutes("PADDING_BEFORE_MINUTES"),
     paddingAfter: intMinutes("PADDING_AFTER_MINUTES"),
     filenameTemplate:
       process.env.FILENAME_TEMPLATE?.trim() || DEFAULT_FILENAME_TEMPLATE,
     setAiredTime: boolean("SET_AIRED_TIME", true),
+    subscriptionsFile: process.env.SUBSCRIPTIONS_FILE?.trim() || "subscriptions.json",
   };
 }

@@ -14,6 +14,7 @@ const config: Config = {
   paddingAfter: 0,
   filenameTemplate: "{title}.{ext}",
   setAiredTime: true,
+  subscriptionsFile: "subscriptions.json",
 };
 
 const realFetch = globalThis.fetch;
