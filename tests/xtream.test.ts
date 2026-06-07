@@ -15,6 +15,7 @@ const config: Config = {
   paddingAfter: 0,
   filenameTemplate: "{title}.{ext}",
   setAiredTime: true,
+  writeNfo: true,
 };
 
 const realFetch = globalThis.fetch;

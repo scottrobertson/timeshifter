@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
-import { download, outputFilename, recordingWindow, setFileTime } from "./timeshift.js";
+import { download, outputFilename, recordingWindow, setFileTime, syncNfo } from "./timeshift.js";
 import {
   channelMatches,
   loadWatchConfig,
@@ -70,6 +70,13 @@ async function downloadProgram(
         // Non-fatal: the recording is fine, only its file date didn't get set.
       }
     }
+    if (config.writeNfo) {
+      try {
+        await syncNfo(program, result.outputPath, new Date());
+      } catch {
+        // Non-fatal: the recording is fine, only the .nfo didn't get written.
+      }
+    }
     console.log(`${status("✓ saved")} ${result.outputPath}`);
     return true;
   } catch (err) {
@@ -116,9 +123,21 @@ async function pollOnce(
 
         const when = program.startLocal.slice(0, 16);
         const filename = outputFilename(config, channel, program, sub.filenameTemplate);
-        if (existsSync(path.join(config.downloadDir, filename))) {
+        const outputPath = path.join(config.downloadDir, filename);
+        if (existsSync(outputPath)) {
           alreadyHad++;
-          console.log(`${status("skip")} ${when} · ${program.title}`);
+          // Refresh the sidecar even when the download is skipped, so an existing
+          // recording still gets (or updates) its .nfo. Only note real changes.
+          let note = "";
+          if (config.writeNfo) {
+            try {
+              const nfo = await syncNfo(program, outputPath, new Date());
+              if (nfo.status !== "unchanged") note = ` · ${nfo.status} .nfo`;
+            } catch {
+              // Non-fatal: the recording is there, only its .nfo didn't update.
+            }
+          }
+          console.log(`${status("skip")} ${when} · ${program.title}${note}`);
           continue;
         }
 

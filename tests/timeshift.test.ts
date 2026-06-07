@@ -4,12 +4,15 @@ import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  buildNfo,
   buildTimeshiftUrl,
   formatStartForUrl,
+  nfoPathFor,
   outputFilename,
   recordingWindow,
   setFileTime,
   streamToFile,
+  syncNfo,
 } from "../src/timeshift.js";
 import type { Config } from "../src/config.js";
 import type { Channel, EpgProgram } from "../src/source.js";
@@ -26,6 +29,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     paddingAfter: 0,
     filenameTemplate: "{channel} - {title} - {datetime}.{ext}",
     setAiredTime: true,
+    writeNfo: true,
     ...overrides,
   };
 }
@@ -200,6 +204,88 @@ describe("setFileTime", () => {
 
     const stats = await stat(file);
     assert.equal(stats.mtime.getTime(), aired.getTime());
+  });
+});
+
+describe("nfoPathFor", () => {
+  it("swaps the .ts extension for .nfo and keeps the directory", () => {
+    assert.equal(
+      nfoPathFor("/catchup/NASA TV/Launch - 2024-03-10_12-00.ts"),
+      "/catchup/NASA TV/Launch - 2024-03-10_12-00.nfo",
+    );
+  });
+});
+
+describe("buildNfo", () => {
+  it("fills the episode details", () => {
+    const nfo = buildNfo(
+      makeProgram({
+        title: "Artemis II Launch",
+        description: "Live launch coverage.",
+        startLocal: "2024-03-10 21:30:00",
+      }),
+      "2024-03-10 22:05:00",
+    );
+    assert.match(nfo, /^<\?xml version="1\.0" encoding="UTF-8" standalone="yes"\?>/);
+    assert.match(nfo, /<episodedetails>/);
+    assert.match(nfo, /<title>Artemis II Launch<\/title>/);
+    assert.match(nfo, /<plot>Live launch coverage\.<\/plot>/);
+    assert.match(nfo, /<aired>2024-03-10<\/aired>/);
+    assert.match(nfo, /<premiered>2024-03-10<\/premiered>/);
+    assert.match(nfo, /<runtime>60<\/runtime>/); // makeProgram is a 60-minute show
+    assert.match(nfo, /<dateadded>2024-03-10 22:05:00<\/dateadded>/);
+  });
+
+  it("escapes XML special characters", () => {
+    const nfo = buildNfo(
+      makeProgram({ title: "Apollo & Soyuz <Live>", description: 'Quote: "go"' }),
+      "2024-03-10 22:05:00",
+    );
+    assert.match(nfo, /<title>Apollo &amp; Soyuz &lt;Live&gt;<\/title>/);
+    assert.match(nfo, /<plot>Quote: &quot;go&quot;<\/plot>/);
+  });
+});
+
+describe("syncNfo", () => {
+  const now = new Date(Date.UTC(2024, 2, 10, 22, 5, 0));
+
+  it("creates the sidecar next to the recording", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const recording = path.join(dir, "Launch - 2024-03-10_12-00.ts");
+
+    const result = await syncNfo(makeProgram({ title: "Launch" }), recording, now);
+
+    assert.equal(result.status, "created");
+    assert.equal(result.path, path.join(dir, "Launch - 2024-03-10_12-00.nfo"));
+    const written = (await readFile(result.path)).toString();
+    assert.match(written, /<title>Launch<\/title>/);
+  });
+
+  it("reports unchanged on an identical second call", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const recording = path.join(dir, "show.ts");
+
+    await syncNfo(makeProgram(), recording, now);
+    const second = await syncNfo(makeProgram(), recording, new Date(now.getTime() + 60_000));
+
+    assert.equal(second.status, "unchanged");
+  });
+
+  it("updates changed metadata but keeps the original dateadded", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const recording = path.join(dir, "show.ts");
+
+    const first = await syncNfo(makeProgram({ title: "Old title" }), recording, now);
+    const originalDateAdded = (await readFile(first.path)).toString().match(/<dateadded>(.*?)<\/dateadded>/)![1];
+
+    const later = new Date(now.getTime() + 3_600_000);
+    const result = await syncNfo(makeProgram({ title: "New title" }), recording, later);
+
+    assert.equal(result.status, "updated");
+    const written = (await readFile(result.path)).toString();
+    assert.match(written, /<title>New title<\/title>/);
+    // dateadded is preserved from the first write, not the later "now".
+    assert.match(written, new RegExp(`<dateadded>${originalDateAdded}</dateadded>`));
   });
 });
 

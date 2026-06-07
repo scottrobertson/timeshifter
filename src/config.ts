@@ -17,6 +17,8 @@ export interface Config {
   filenameTemplate: string;
   /** Set the downloaded file's modified time to when the program aired. */
   setAiredTime: boolean;
+  /** Write a Kodi/Emby/Jellyfin .nfo metadata file next to each recording. */
+  writeNfo: boolean;
 }
 
 export const DEFAULT_CONFIG_FILE = "config.json";
@@ -108,5 +110,6 @@ export function loadConfig(file = DEFAULT_CONFIG_FILE): Config {
     paddingAfter: optionalInt(obj, "paddingAfter", 0),
     filenameTemplate: optionalString(obj, "filenameTemplate", DEFAULT_FILENAME_TEMPLATE),
     setAiredTime: optionalBoolean(obj, "setAiredTime", true),
+    writeNfo: optionalBoolean(obj, "writeNfo", true),
   };
 }

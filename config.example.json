@@ -8,6 +8,7 @@
   "paddingAfter": 0,
   "filenameTemplate": "{channel} - {title} - {datetime}.{ext}",
   "setAiredTime": true,
+  "writeNfo": true,
   "watch": {
     "pollIntervalMinutes": 10,
     "readyGraceMinutes": 0,

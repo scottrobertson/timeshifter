@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm, utimes } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, utimes, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
@@ -334,4 +334,90 @@ function renderDownloadProgress(
 /** Set a file's modified (and access) time, e.g. to when a program aired. */
 export async function setFileTime(filePath: string, when: Date): Promise<void> {
   await utimes(filePath, when, when);
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/** Format a Date as a local "YYYY-MM-DD HH:MM:SS", for the .nfo dateadded. */
+function formatNfoDate(when: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} ` +
+    `${pad(when.getHours())}:${pad(when.getMinutes())}:${pad(when.getSeconds())}`
+  );
+}
+
+/** The .nfo sidecar path for a recording: same name, .nfo extension. */
+export function nfoPathFor(outputPath: string): string {
+  const dir = path.dirname(outputPath);
+  const base = path.basename(outputPath, path.extname(outputPath));
+  return path.join(dir, `${base}.nfo`);
+}
+
+/**
+ * Build the .nfo XML for a recording: an <episodedetails> sidecar that media
+ * servers (Emby, Jellyfin, Kodi) read to get the title, plot and air date
+ * instead of guessing from the filename. `dateAdded` is a preformatted
+ * "YYYY-MM-DD HH:MM:SS" string so it stays stable across refreshes.
+ */
+export function buildNfo(program: EpgProgram, dateAdded: string): string {
+  const date = program.startLocal.slice(0, 10); // YYYY-MM-DD
+  const runtime = Math.max(
+    0,
+    Math.round((program.end.getTime() - program.start.getTime()) / 60_000),
+  );
+  return (
+    [
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`,
+      `<episodedetails>`,
+      `  <title>${escapeXml(program.title)}</title>`,
+      `  <plot>${escapeXml(program.description)}</plot>`,
+      `  <aired>${date}</aired>`,
+      `  <premiered>${date}</premiered>`,
+      `  <runtime>${runtime}</runtime>`,
+      `  <dateadded>${dateAdded}</dateadded>`,
+      `</episodedetails>`,
+    ].join("\n") + "\n"
+  );
+}
+
+export interface NfoSyncResult {
+  status: "created" | "updated" | "unchanged";
+  path: string;
+}
+
+const DATE_ADDED_RE = /<dateadded>(.*?)<\/dateadded>/;
+
+/**
+ * Write or refresh a recording's .nfo sidecar. Reuses the existing dateadded so
+ * a refresh doesn't churn the timestamp, and only rewrites when the content
+ * actually changed, so it's cheap to call on every poll.
+ */
+export async function syncNfo(
+  program: EpgProgram,
+  outputPath: string,
+  now: Date,
+): Promise<NfoSyncResult> {
+  const nfoPath = nfoPathFor(outputPath);
+
+  let existing: string | null;
+  try {
+    existing = await readFile(nfoPath, "utf8");
+  } catch {
+    existing = null;
+  }
+
+  const dateAdded = existing?.match(DATE_ADDED_RE)?.[1] ?? formatNfoDate(now);
+  const contents = buildNfo(program, dateAdded);
+  if (existing === contents) return { status: "unchanged", path: nfoPath };
+
+  await writeFile(nfoPath, contents, "utf8");
+  return { status: existing === null ? "created" : "updated", path: nfoPath };
 }

@@ -7,6 +7,7 @@ import {
   outputFilename,
   recordingWindow,
   setFileTime,
+  syncNfo,
 } from "./timeshift.js";
 
 function formatProgramTime(program: EpgProgram): string {
@@ -178,6 +179,15 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
       console.log("  ✓ Set the file date to when it aired");
     } catch {
       console.log("  ⚠️  Could not set the file date");
+    }
+  }
+
+  if (config.writeNfo) {
+    try {
+      await syncNfo(program, result.outputPath, new Date());
+      console.log("  ✓ Wrote .nfo metadata");
+    } catch {
+      console.log("  ⚠️  Could not write the .nfo");
     }
   }
 
