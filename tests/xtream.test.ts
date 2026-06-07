@@ -1,7 +1,8 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { XtreamSource } from "../src/xtream.js";
+import { XtreamSource, dedupeOverlapping } from "../src/xtream.js";
 import type { Config } from "../src/config.js";
+import type { EpgProgram } from "../src/source.js";
 
 const config: Config = {
   baseUrl: "http://example.com:8080",
@@ -86,5 +87,69 @@ describe("XtreamSource.programs", () => {
     const programs = await new XtreamSource(config).programs({ name: "A", archiveDays: 7, streamId: 1 });
     assert.deepEqual(programs.map((p) => p.title), ["Newer", "Older"]);
     assert.equal(programs[0]!.hasArchive, true);
+  });
+
+  it("collapses a duplicate the provider returns twice, shifted by minutes", async () => {
+    stubFetch({
+      epg_listings: [
+        // Same launch returned twice, 10 minutes apart.
+        { title: base64("Moon Launch"), start: "2024-01-01 08:20:00", end: "2024-01-01 09:40:00", start_timestamp: 1704097200, stop_timestamp: 1704102000, has_archive: 1 },
+        { title: base64("Moon Launch"), start: "2024-01-01 08:30:00", end: "2024-01-01 09:50:00", start_timestamp: 1704097800, stop_timestamp: 1704102600, has_archive: 1 },
+      ],
+    });
+    const programs = await new XtreamSource(config).programs({ name: "A", archiveDays: 7, streamId: 1 });
+    assert.equal(programs.length, 1);
+    assert.equal(programs[0]!.startLocal, "2024-01-01 08:20:00"); // earliest start
+    assert.equal(programs[0]!.endLocal, "2024-01-01 09:50:00"); // latest end
+  });
+});
+
+describe("dedupeOverlapping", () => {
+  function p(title: string, startMs: number, endMs: number): EpgProgram {
+    return {
+      title,
+      description: "",
+      start: new Date(startMs),
+      end: new Date(endMs),
+      startLocal: "",
+      endLocal: "",
+      hasArchive: true,
+    };
+  }
+  const H = 3_600_000;
+
+  it("merges a same-title overlapping entry into the earliest start and latest end", () => {
+    const out = dedupeOverlapping([p("Launch", 10 * H, 11 * H), p("Launch", 10 * H + 600_000, 11 * H + 600_000)]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.start.getTime(), 10 * H); // earliest start
+    assert.equal(out[0]!.end.getTime(), 11 * H + 600_000); // latest end
+  });
+
+  it("merges three or more overlapping copies into one span", () => {
+    const out = dedupeOverlapping([
+      p("Launch", 10 * H, 11 * H),
+      p("Launch", 10 * H + 600_000, 11 * H + 600_000),
+      p("Launch", 10 * H + 1_200_000, 11 * H + 1_200_000),
+    ]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.start.getTime(), 10 * H); // earliest of the three
+    assert.equal(out[0]!.end.getTime(), 11 * H + 1_200_000); // latest of the three
+  });
+
+  it("does not shrink the end when the later duplicate finishes sooner", () => {
+    // Earliest start already kept; a shorter overlapping dup must not clip it.
+    const out = dedupeOverlapping([p("Launch", 10 * H, 12 * H), p("Launch", 10 * H + 600_000, 11 * H)]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.end.getTime(), 12 * H);
+  });
+
+  it("keeps a same-title repeat that doesn't overlap", () => {
+    const out = dedupeOverlapping([p("Launch", 10 * H, 11 * H), p("Launch", 18 * H, 19 * H)]);
+    assert.equal(out.length, 2);
+  });
+
+  it("keeps different titles that overlap", () => {
+    const out = dedupeOverlapping([p("Launch", 10 * H, 11 * H), p("Docking", 10 * H, 11 * H)]);
+    assert.equal(out.length, 2);
   });
 });

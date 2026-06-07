@@ -23,6 +23,39 @@ function isTruthy(value: unknown): boolean {
   return value === 1 || value === "1" || value === true;
 }
 
+/**
+ * Some panels return the same programme more than once, a few minutes apart
+ * (same title, overlapping times, different listing ids). Collapse same-title
+ * entries whose times overlap into one, spanning the earliest start to the
+ * latest end, so the recording covers the whole show whichever copy is right. A
+ * genuine later repeat has the same title but doesn't overlap, so it's left
+ * alone.
+ */
+export function dedupeOverlapping(programs: EpgProgram[]): EpgProgram[] {
+  const byStart = [...programs].sort((a, b) => a.start.getTime() - b.start.getTime());
+  const kept: EpgProgram[] = [];
+  for (const p of byStart) {
+    const existing = kept.find(
+      (k) =>
+        k.title === p.title &&
+        p.start.getTime() < k.end.getTime() &&
+        k.start.getTime() < p.end.getTime(),
+    );
+    if (!existing) {
+      kept.push({ ...p });
+      continue;
+    }
+    // The earliest start is already kept (sorted ascending); widen to the later
+    // end so the recording covers both feeds' idea of when it finishes.
+    if (p.end.getTime() > existing.end.getTime()) {
+      existing.end = p.end;
+      existing.endLocal = p.endLocal;
+    }
+    existing.hasArchive = existing.hasArchive || p.hasArchive;
+  }
+  return kept;
+}
+
 export class XtreamSource implements Source {
   /** The provider's timezone (IANA name), which the guide times are in. */
   timezone: string | undefined;
@@ -130,7 +163,7 @@ export class XtreamSource implements Source {
 
     const listings = data.epg_listings ?? [];
 
-    return listings
+    const programs = listings
       .map((item) => ({
         title: decodeBase64(item.title) || "Untitled",
         description: decodeBase64(item.description),
@@ -140,8 +173,9 @@ export class XtreamSource implements Source {
         endLocal: item.end ?? "",
         hasArchive: isTruthy(item.has_archive),
       }))
-      .filter((program) => program.startLocal && program.end > program.start)
-      .sort((a, b) => b.start.getTime() - a.start.getTime());
+      .filter((program) => program.startLocal && program.end > program.start);
+
+    return dedupeOverlapping(programs).sort((a, b) => b.start.getTime() - a.start.getTime());
   }
 
   catchupUrl(channel: Channel, window: RecordingWindow): string {
