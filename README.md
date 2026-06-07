@@ -25,13 +25,15 @@ For now it works with Xtream Codes providers (the most common kind, where you lo
 
 ## Setup
 
-Create your `.env`:
+Create a `.env` file with your provider's base URL (including port), username and password:
 
 ```
-cp .env.example .env
+IPTV_URL=http://my-provider.com:8080
+IPTV_USERNAME=your-username
+IPTV_PASSWORD=your-password
 ```
 
-Fill in your provider's base URL (including port), username and password. See `.env.example` for the optional settings.
+That's all you need to get going. See [`.env.example`](.env.example) for the optional settings (padding, filename template, user agent, and so on). If you've cloned the repo, you can `cp .env.example .env` instead.
 
 ## Interactive mode (pick a show)
 
