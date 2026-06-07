@@ -244,6 +244,30 @@ describe("buildNfo", () => {
     assert.match(nfo, /<title>Apollo &amp; Soyuz &lt;Live&gt;<\/title>/);
     assert.match(nfo, /<plot>Quote: &quot;go&quot;<\/plot>/);
   });
+
+  it("lifts a season/episode prefix out of the description", () => {
+    const nfo = buildNfo(
+      makeProgram({
+        title: "Apollo Diaries",
+        description: "S2 E5 Orbital Insertion\nLive coverage of the second crewed flight.",
+      }),
+      "2024-03-10 22:05:00",
+    );
+    assert.match(nfo, /<season>2<\/season>/);
+    assert.match(nfo, /<episode>5<\/episode>/);
+    // The prefix is stripped from the plot so it isn't repeated.
+    assert.match(nfo, /<plot>Orbital Insertion\nLive coverage of the second crewed flight\.<\/plot>/);
+  });
+
+  it("omits season/episode when the description has no prefix", () => {
+    const nfo = buildNfo(
+      makeProgram({ description: "Live coverage of the launch." }),
+      "2024-03-10 22:05:00",
+    );
+    assert.doesNotMatch(nfo, /<season>/);
+    assert.doesNotMatch(nfo, /<episode>/);
+    assert.match(nfo, /<plot>Live coverage of the launch\.<\/plot>/);
+  });
 });
 
 describe("syncNfo", () => {

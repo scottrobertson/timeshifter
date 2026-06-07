@@ -19,7 +19,7 @@ For now it works with Xtream Codes providers (the most common kind, where you lo
 - Pad or trim the start and end of a recording, as a default or per-download.
 - Name files however you like, including into subfolders.
 - Stamps each file with the show's air time, so it sorts by air date in your media library.
-- Writes a `.nfo` metadata file next to each recording, so Emby, Jellyfin and Kodi pick up the title, description, air date and runtime.
+- Writes a `.nfo` metadata file next to each recording, so Emby, Jellyfin and Kodi pick up the title, description, air date, runtime and (when the guide includes it) the season and episode number.
 - Live progress with download speed and ETA.
 - Saves as `.ts`, which plays in VLC, Plex, Emby and Jellyfin. No transcoding, so it's quick.
 - Runs as a Docker image (ffmpeg bundled), or directly with Node and ffmpeg.
@@ -49,7 +49,7 @@ If you've cloned the repo, run `cp config.example.json config.json` and edit it.
 | `paddingBefore` / `paddingAfter` | `0` | Minutes added before the start and after the end of each recording, in case the guide times are off. A negative number does the opposite (starts late, ends early). You can also change these per-download at the confirm prompt. |
 | `filenameTemplate` | `{channel} - {title} - {datetime}.{ext}` | How files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. Supports subfolders, e.g. `{channel}/{title} - {date}.{ext}`. |
 | `setAiredTime` | `true` | Set the file's modified time to when the show aired, so it sorts by air date in a media library. Set to `false` to keep the download time. |
-| `writeNfo` | `true` | Write a `.nfo` metadata file next to each recording (title, description, air date, runtime) so Emby, Jellyfin and Kodi read it instead of guessing from the filename. Set to `false` to skip it. |
+| `writeNfo` | `true` | Write a `.nfo` metadata file next to each recording (title, description, air date, runtime, and season/episode when the guide includes it) so Emby, Jellyfin and Kodi read it instead of guessing from the filename. Set to `false` to skip it. |
 | `watch` | — | Watch-mode rules. See [Watch mode](#watch-mode-automatic-downloads). |
 
 ## Interactive mode (pick a show)
@@ -202,7 +202,7 @@ npm start watch
 - **Padding:** `paddingBefore` / `paddingAfter` start the recording early and end it late, in case the guide times are off. A negative number does the opposite (starts late, ends early). These are the defaults; you can also change them per-download at the confirm prompt. A still-airing show's end is capped at the current time.
 - **Filename:** set `filenameTemplate` to control how files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{ext}`. You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`. Defaults to `{channel} - {title} - {datetime}.{ext}`.
 - **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `"setAiredTime": false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
-- **.nfo metadata:** a `.nfo` file is written next to each recording with the title, description, air date and runtime, so Emby, Jellyfin and Kodi use that instead of guessing from the filename. In watch mode it's also created or refreshed for recordings you already have. Set `"writeNfo": false` to turn it off.
+- **.nfo metadata:** a `.nfo` file is written next to each recording with the title, description, air date and runtime, so Emby, Jellyfin and Kodi use that instead of guessing from the filename. When the guide prefixes the description with a season/episode marker (e.g. `S21 E8`), that's pulled out into proper season and episode fields. In watch mode it's also created or refreshed for recordings you already have. Set `"writeNfo": false` to turn it off.
 - **Timezone:** set the `TZ` environment variable (e.g. `Europe/London`) to control the timezone of the watch-mode log timestamps; it defaults to UTC. The Docker image bundles the zone data. Guide and recording times are unaffected; they always use the provider's own local time, which is what the endpoint expects, so no timezone conversion happens.
 
 ## Built with Claude

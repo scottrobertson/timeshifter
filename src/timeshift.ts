@@ -361,6 +361,10 @@ export function nfoPathFor(outputPath: string): string {
   return path.join(dir, `${base}.nfo`);
 }
 
+// Many EPGs prefix the description with the season and episode, e.g.
+// "S21 E8 I Don't Got Any\n...". Pulled out into proper fields below.
+const SEASON_EPISODE_RE = /^S(\d+)\s*E(\d+)\b\s*/i;
+
 /**
  * Build the .nfo XML for a recording: an <episodedetails> sidecar that media
  * servers (Emby, Jellyfin, Kodi) read to get the title, plot and air date
@@ -373,19 +377,30 @@ export function buildNfo(program: EpgProgram, dateAdded: string): string {
     0,
     Math.round((program.end.getTime() - program.start.getTime()) / 60_000),
   );
-  return (
-    [
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`,
-      `<episodedetails>`,
-      `  <title>${escapeXml(program.title)}</title>`,
-      `  <plot>${escapeXml(program.description)}</plot>`,
-      `  <aired>${date}</aired>`,
-      `  <premiered>${date}</premiered>`,
-      `  <runtime>${runtime}</runtime>`,
-      `  <dateadded>${dateAdded}</dateadded>`,
-      `</episodedetails>`,
-    ].join("\n") + "\n"
+
+  // If the description starts with a season/episode marker, lift it into proper
+  // fields and drop the prefix from the plot so it isn't repeated.
+  const se = program.description.match(SEASON_EPISODE_RE);
+  const plot = se ? program.description.slice(se[0].length) : program.description;
+
+  const lines = [
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`,
+    `<episodedetails>`,
+    `  <title>${escapeXml(program.title)}</title>`,
+  ];
+  if (se) {
+    lines.push(`  <season>${Number(se[1])}</season>`);
+    lines.push(`  <episode>${Number(se[2])}</episode>`);
+  }
+  lines.push(
+    `  <plot>${escapeXml(plot)}</plot>`,
+    `  <aired>${date}</aired>`,
+    `  <premiered>${date}</premiered>`,
+    `  <runtime>${runtime}</runtime>`,
+    `  <dateadded>${dateAdded}</dateadded>`,
+    `</episodedetails>`,
   );
+  return lines.join("\n") + "\n";
 }
 
 export interface NfoSyncResult {
