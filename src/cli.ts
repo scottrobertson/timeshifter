@@ -1,4 +1,4 @@
-import { search, confirm, select, number } from "@inquirer/prompts";
+import { search, confirm, select, number, input } from "@inquirer/prompts";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
@@ -98,7 +98,7 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
   }
 
   const program = await pickProgram(downloadable, source.timezone);
-  const filename = outputFilename(config, channel, program);
+  let filename = outputFilename(config, channel, program);
   const programMinutes = Math.round(
     (program.end.getTime() - program.start.getTime()) / 60_000,
   );
@@ -136,6 +136,7 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
       choices: [
         { name: "Download", value: "download" },
         { name: "Adjust padding", value: "adjust" },
+        { name: "Edit filename", value: "filename" },
         { name: "Cancel", value: "cancel" },
       ],
     });
@@ -144,6 +145,19 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
       return;
     }
     if (action === "download") break;
+
+    if (action === "filename") {
+      filename = (
+        await input({
+          message: "Filename:",
+          default: filename,
+          prefill: "editable",
+          validate: (v) => v.trim().length > 0 || "Enter a filename.",
+        })
+      ).trim();
+      printPlan();
+      continue;
+    }
 
     console.log("\nMinutes to add at each end. A negative number records less.");
     before = Math.round((await number({ message: "Before:", default: before })) ?? before);
