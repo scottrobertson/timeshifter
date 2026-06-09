@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isDue, pollOnce, type SubscriptionPollResult } from "../src/watch.js";
@@ -151,6 +151,26 @@ describe("pollOnce", () => {
     assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
     const written = await readFile(path.join(dir, recordingName));
     assert.equal(written.toString(), "launch footage");
+  });
+
+  it("stamps the aired time and writes the .nfo after a download", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+    serveBytes("launch footage");
+    restoreFfmpeg = await installFakeFfmpeg("copy");
+
+    const results = await pollOnce(
+      makeConfig(dir, { setAiredTime: true, writeNfo: true }),
+      fakeSource([makeProgram()]),
+      makeWatch(),
+      false,
+      now,
+    );
+
+    assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
+    const stats = await stat(path.join(dir, recordingName));
+    assert.equal(stats.mtime.getTime(), Date.UTC(2026, 5, 7, 13, 0, 0)); // when it aired
+    const nfo = await readFile(path.join(dir, "Artemis II - Moon Launch ᴸᶦᵛᵉ.nfo"));
+    assert.match(nfo.toString(), /<title>Artemis II : Moon Launch ᴸᶦᵛᵉ<\/title>/);
   });
 
   it("lists without downloading on a dry run", async () => {
