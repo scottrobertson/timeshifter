@@ -1,0 +1,37 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+// A fake ffmpeg that does what the real remux does for our purposes: copies
+// the -i input to the last argument (the output path).
+const COPY_SCRIPT = `#!/bin/sh
+prev=""
+input=""
+out=""
+for arg in "$@"; do
+  if [ "$prev" = "-i" ]; then input="$arg"; fi
+  prev="$arg"
+  out="$arg"
+done
+cat "$input" > "$out"
+`;
+
+const FAIL_SCRIPT = `#!/bin/sh
+echo "corrupt input" >&2
+exit 1
+`;
+
+/**
+ * Put a fake ffmpeg first on PATH so download() can be tested without the real
+ * one. Returns a restore function to call in afterEach.
+ */
+export async function installFakeFfmpeg(kind: "copy" | "fail"): Promise<() => void> {
+  const dir = await mkdtemp(path.join(tmpdir(), "fake-ffmpeg-"));
+  const script = kind === "copy" ? COPY_SCRIPT : FAIL_SCRIPT;
+  await writeFile(path.join(dir, "ffmpeg"), script, { mode: 0o755 });
+  const realPath = process.env.PATH;
+  process.env.PATH = `${dir}:${realPath}`;
+  return () => {
+    process.env.PATH = realPath;
+  };
+}

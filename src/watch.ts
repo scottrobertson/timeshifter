@@ -87,17 +87,41 @@ async function downloadProgram(
   }
 }
 
-async function pollOnce(
+/** What one poll did for one subscription, for the log line and for tests. */
+export interface SubscriptionPollResult {
+  subscription: string;
+  /** Programs that matched and were ready to download. */
+  ready: number;
+  /** Of those, how many a dry run would have downloaded. */
+  listed: number;
+  downloaded: number;
+  failed: number;
+  /** Skipped because the file already exists. */
+  alreadyHad: number;
+}
+
+export async function pollOnce(
   config: Config,
   source: Source,
   watch: WatchConfig,
   dryRun: boolean,
-): Promise<void> {
-  const now = Date.now();
+  now: number = Date.now(),
+): Promise<SubscriptionPollResult[]> {
   const channels = await source.archiveChannels();
+  const results: SubscriptionPollResult[] = [];
 
   for (const sub of watch.subscriptions) {
     console.log(`\n[${stamp(now)}] ${sub.name}`);
+
+    const result: SubscriptionPollResult = {
+      subscription: sub.name,
+      ready: 0,
+      listed: 0,
+      downloaded: 0,
+      failed: 0,
+      alreadyHad: 0,
+    };
+    results.push(result);
 
     const matching = channels.filter((c) => channelMatches(sub, c));
     if (matching.length === 0) {
@@ -109,23 +133,18 @@ async function pollOnce(
     // No "from" means take the whole archive (file-exists dedup stops repeats).
     const cutoff = sub.from ? Date.parse(sub.from) : Number.NEGATIVE_INFINITY;
 
-    let ready = 0;
-    let listed = 0;
-    let downloaded = 0;
-    let failed = 0;
-    let alreadyHad = 0;
     for (const channel of matching) {
       const programs = await source.programs(channel);
       for (const program of programs) {
         if (!titleMatches(sub, program.title)) continue;
         if (!isDue(program, after, watch.readyGraceMinutes, cutoff, now)) continue;
-        ready++;
+        result.ready++;
 
         const when = program.startLocal.slice(0, 16);
         const filename = outputFilename(config, channel, program, sub.filenameTemplate);
         const outputPath = path.join(config.downloadDir, filename);
         if (existsSync(outputPath)) {
-          alreadyHad++;
+          result.alreadyHad++;
           // Refresh the sidecar even when the download is skipped, so an existing
           // recording still gets (or updates) its .nfo. Only note real changes.
           let note = "";
@@ -143,21 +162,23 @@ async function pollOnce(
 
         const label = dryRun ? "would get" : "download";
         console.log(`${status(label)} ${when} · ${program.title}`);
-        listed++;
+        result.listed++;
         if (dryRun) continue;
         if (await downloadProgram(config, source, channel, program, before, after, filename)) {
-          downloaded++;
+          result.downloaded++;
         } else {
-          failed++;
+          result.failed++;
         }
       }
     }
 
     const outcome = dryRun
-      ? `${listed} would download`
-      : `${downloaded} downloaded${failed ? `, ${failed} failed` : ""}`;
-    console.log(`\n${ready} ready · ${outcome} · ${alreadyHad} already had`);
+      ? `${result.listed} would download`
+      : `${result.downloaded} downloaded${result.failed ? `, ${result.failed} failed` : ""}`;
+    console.log(`\n${result.ready} ready · ${outcome} · ${result.alreadyHad} already had`);
   }
+
+  return results;
 }
 
 export async function runWatch(config: Config, dryRun = false): Promise<void> {

@@ -1,11 +1,12 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   buildNfo,
   buildTimeshiftUrl,
+  download,
   formatStartForUrl,
   nfoPathFor,
   outputFilename,
@@ -16,6 +17,7 @@ import {
 } from "../src/timeshift.js";
 import type { Config } from "../src/config.js";
 import type { Channel, EpgProgram } from "../src/source.js";
+import { installFakeFfmpeg } from "./support.js";
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -333,5 +335,117 @@ describe("streamToFile", () => {
     assert.equal(result.bytesDownloaded, data.length);
     assert.equal(result.expectedBytes, data.length);
     assert.equal((await readFile(dest)).toString(), data.toString());
+  });
+
+  it("throws on a non-OK response", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    globalThis.fetch = (async () =>
+      new Response("nope", { status: 404, statusText: "Not Found" })) as unknown as typeof globalThis.fetch;
+
+    await assert.rejects(
+      streamToFile(makeConfig(), "http://example.com/x.ts", path.join(dir, "out.ts")),
+      /Download failed: 404 Not Found/,
+    );
+  });
+
+  it("accepts a stream that dies within 1% of the advertised length", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(new Uint8Array(995)); // 995 of 1000 advertised bytes
+        // Let the chunk flush through the pipeline before the "connection" dies,
+        // like a real server that closes just short of the advertised length.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.error(new Error("connection reset"));
+      },
+    });
+    globalThis.fetch = (async () =>
+      new Response(body, { headers: { "content-length": "1000" } })) as unknown as typeof globalThis.fetch;
+
+    const result = await streamToFile(makeConfig(), "http://example.com/x.ts", path.join(dir, "out.ts"));
+
+    assert.equal(result.bytesDownloaded, 995);
+    assert.equal(result.expectedBytes, 1000);
+  });
+
+  it("throws when the stream dies with a real shortfall", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(100)); // only 100 of 1000 advertised bytes
+        controller.error(new Error("connection reset"));
+      },
+    });
+    globalThis.fetch = (async () =>
+      new Response(body, { headers: { "content-length": "1000" } })) as unknown as typeof globalThis.fetch;
+
+    await assert.rejects(
+      streamToFile(makeConfig(), "http://example.com/x.ts", path.join(dir, "out.ts")),
+      /connection reset/,
+    );
+  });
+});
+
+describe("download", () => {
+  const realFetch = globalThis.fetch;
+  let restoreFfmpeg: (() => void) | undefined;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    restoreFfmpeg?.();
+    restoreFfmpeg = undefined;
+  });
+
+  function serveBytes(data: string): void {
+    globalThis.fetch = (async () =>
+      new Response(Buffer.from(data), {
+        headers: { "content-length": String(Buffer.byteLength(data)) },
+      })) as unknown as typeof globalThis.fetch;
+  }
+
+  it("downloads, remuxes and puts the finished file in place", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    serveBytes("raw transport stream");
+    restoreFfmpeg = await installFakeFfmpeg("copy");
+
+    const result = await download(
+      makeConfig({ downloadDir: dir }),
+      "http://example.com/x.ts",
+      "Artemis II Launch.ts",
+    );
+
+    assert.equal(result.outputPath, path.join(dir, "Artemis II Launch.ts"));
+    assert.equal((await readFile(result.outputPath)).toString(), "raw transport stream");
+    // The .part and .remux work files are gone; only the finished recording remains.
+    assert.deepEqual(await readdir(dir), ["Artemis II Launch.ts"]);
+  });
+
+  it("cleans up the work files and rethrows when the remux fails", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    serveBytes("raw transport stream");
+    restoreFfmpeg = await installFakeFfmpeg("fail");
+
+    await assert.rejects(
+      download(makeConfig({ downloadDir: dir }), "http://example.com/x.ts", "Artemis II Launch.ts"),
+      /ffmpeg failed: corrupt input/,
+    );
+    assert.deepEqual(await readdir(dir), []);
+  });
+
+  it("explains how to install ffmpeg when it's missing", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    serveBytes("raw transport stream");
+    const emptyPath = await mkdtemp(path.join(tmpdir(), "no-ffmpeg-"));
+    const realPath = process.env.PATH;
+    process.env.PATH = emptyPath;
+
+    try {
+      await assert.rejects(
+        download(makeConfig({ downloadDir: dir }), "http://example.com/x.ts", "Artemis II Launch.ts"),
+        /ffmpeg not found/,
+      );
+    } finally {
+      process.env.PATH = realPath;
+    }
+    assert.deepEqual(await readdir(dir), []);
   });
 });
