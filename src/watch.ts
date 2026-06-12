@@ -141,7 +141,13 @@ export async function pollOnce(
         result.ready++;
 
         const when = program.startLocal.slice(0, 16);
-        const filename = outputFilename(config, channel, program, sub.filenameTemplate);
+        const filename = outputFilename(
+          config,
+          channel,
+          program,
+          sub.filenameTemplate,
+          sub.filenameStrip,
+        );
         const outputPath = path.join(config.downloadDir, filename);
         if (existsSync(outputPath)) {
           result.alreadyHad++;

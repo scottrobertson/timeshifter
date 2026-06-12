@@ -7,6 +7,7 @@
   "paddingBefore": 0,
   "paddingAfter": 0,
   "filenameTemplate": "{channel} - {title} - {datetime}.{ext}",
+  "filenameStrip": [],
   "setAiredTime": true,
   "writeNfo": true,
   "watch": {

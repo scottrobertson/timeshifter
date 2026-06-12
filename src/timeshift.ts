@@ -86,6 +86,15 @@ export function buildTimeshiftUrl(
   )}/${minutes}/${startTime}/${streamId}.ts`;
 }
 
+/** Remove each strip string from the title and tidy up the spaces left behind. */
+export function stripTitle(title: string, strip: string[]): string {
+  let result = title;
+  for (const s of strip) {
+    result = result.split(s).join("");
+  }
+  return result.replace(/\s+/g, " ").trim();
+}
+
 function sanitize(name: string): string {
   return name
     .replace(/[/\\?%*:|"<>]/g, "-")
@@ -99,6 +108,7 @@ export function outputFilename(
   channel: Channel,
   program: EpgProgram,
   template: string = config.filenameTemplate,
+  filenameStrip: string[] = config.filenameStrip,
 ): string {
   // The EPG start string comes straight from the panel, so check the format
   // instead of slicing blind. A bad format would break the catchup URL too,
@@ -114,7 +124,7 @@ export function outputFilename(
   // Free-text values get sanitised; the date/time/ext tokens are already safe.
   const tokens: Record<string, string> = {
     channel: sanitize(channel.name),
-    title: sanitize(program.title),
+    title: sanitize(stripTitle(program.title, filenameStrip)),
     date,
     time,
     datetime: `${date}_${time}`,

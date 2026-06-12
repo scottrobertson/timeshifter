@@ -88,6 +88,7 @@ describe("pollOnce", () => {
       paddingBefore: 0,
       paddingAfter: 0,
       filenameTemplate: "{channel} - {title} - {datetime}.{ext}",
+      filenameStrip: [],
       setAiredTime: false,
       writeNfo: false,
       ...overrides,
@@ -171,6 +172,42 @@ describe("pollOnce", () => {
     assert.equal(stats.mtime.getTime(), Date.UTC(2026, 5, 7, 13, 0, 0)); // when it aired
     const nfo = await readFile(path.join(dir, "Artemis II - Moon Launch ᴸᶦᵛᵉ.nfo"));
     assert.match(nfo.toString(), /<title>Artemis II : Moon Launch ᴸᶦᵛᵉ<\/title>/);
+  });
+
+  it("strips the title in the filename but not the .nfo", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+    serveBytes("launch footage");
+    restoreFfmpeg = await installFakeFfmpeg("copy");
+
+    const results = await pollOnce(
+      makeConfig(dir, { writeNfo: true }),
+      fakeSource([makeProgram()]),
+      makeWatch({ filenameStrip: ["ᴸᶦᵛᵉ"] }),
+      false,
+      now,
+    );
+
+    assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
+    assert.equal(existsSync(path.join(dir, "Artemis II - Moon Launch.ts")), true);
+    const nfo = await readFile(path.join(dir, "Artemis II - Moon Launch.nfo"));
+    assert.match(nfo.toString(), /<title>Artemis II : Moon Launch ᴸᶦᵛᵉ<\/title>/);
+  });
+
+  it("falls back to the global filenameStrip when the subscription has none", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+    serveBytes("launch footage");
+    restoreFfmpeg = await installFakeFfmpeg("copy");
+
+    const results = await pollOnce(
+      makeConfig(dir, { filenameStrip: ["ᴸᶦᵛᵉ"] }),
+      fakeSource([makeProgram()]),
+      makeWatch(),
+      false,
+      now,
+    );
+
+    assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
+    assert.equal(existsSync(path.join(dir, "Artemis II - Moon Launch.ts")), true);
   });
 
   it("lists without downloading on a dry run", async () => {

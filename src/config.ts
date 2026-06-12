@@ -15,6 +15,8 @@ export interface Config {
   paddingAfter: number;
   /** Output filename template. Supports {channel} {title} {date} {time} {datetime} {year} {month} {day} {ext}. Month and day are zero-padded (03, not 3). */
   filenameTemplate: string;
+  /** Strings to remove from the title when building the filename, e.g. a "live" badge the EPG tacks on. Only affects the filename. */
+  filenameStrip: string[];
   /** Set the downloaded file's modified time to when the program aired. */
   setAiredTime: boolean;
   /** Write a Kodi/Emby/Jellyfin .nfo metadata file next to each recording. */
@@ -73,6 +75,15 @@ function optionalString(obj: Record<string, unknown>, field: string, fallback: s
   return value.trim();
 }
 
+function optionalStringArray(obj: Record<string, unknown>, field: string): string[] {
+  const value = obj[field];
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string" || !v)) {
+    fail(`has a "${field}" that must be an array of non-empty strings.`);
+  }
+  return value as string[];
+}
+
 function optionalInt(obj: Record<string, unknown>, field: string, fallback: number): number {
   const value = obj[field];
   if (value === undefined) return fallback;
@@ -109,6 +120,7 @@ export function loadConfig(file = DEFAULT_CONFIG_FILE): Config {
     paddingBefore: optionalInt(obj, "paddingBefore", 0),
     paddingAfter: optionalInt(obj, "paddingAfter", 0),
     filenameTemplate: optionalString(obj, "filenameTemplate", DEFAULT_FILENAME_TEMPLATE),
+    filenameStrip: optionalStringArray(obj, "filenameStrip"),
     setAiredTime: optionalBoolean(obj, "setAiredTime", true),
     writeNfo: optionalBoolean(obj, "writeNfo", true),
   };

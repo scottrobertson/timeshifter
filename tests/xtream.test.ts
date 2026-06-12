@@ -14,6 +14,7 @@ const config: Config = {
   paddingBefore: 0,
   paddingAfter: 0,
   filenameTemplate: "{title}.{ext}",
+  filenameStrip: [],
   setAiredTime: true,
   writeNfo: true,
 };

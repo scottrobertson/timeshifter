@@ -22,6 +22,8 @@ export interface Subscription {
   paddingAfter?: number;
   /** Output filename template. Falls back to the global filenameTemplate. */
   filenameTemplate?: string;
+  /** Strings to remove from the title when building the filename. Falls back to the global filenameStrip. */
+  filenameStrip?: string[];
 }
 
 export interface WatchConfig {
@@ -113,6 +115,9 @@ function parseSubscription(item: unknown, index: number): Subscription {
     paddingBefore: asInt(obj.paddingBefore, "paddingBefore"),
     paddingAfter: asInt(obj.paddingAfter, "paddingAfter"),
     filenameTemplate: asString(obj.filenameTemplate, "filenameTemplate"),
+    filenameStrip: obj.filenameStrip === undefined
+      ? undefined
+      : asStringArray(obj.filenameStrip, "filenameStrip"),
   };
 }
 

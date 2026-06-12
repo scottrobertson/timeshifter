@@ -30,6 +30,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     paddingBefore: 0,
     paddingAfter: 0,
     filenameTemplate: "{channel} - {title} - {datetime}.{ext}",
+    filenameStrip: [],
     setAiredTime: true,
     writeNfo: true,
     ...overrides,
@@ -182,6 +183,35 @@ describe("outputFilename", () => {
       makeProgram({ title: "The Show", startLocal: "2024-03-10 21:30:00" }),
     );
     assert.equal(name, "2024/03/10 The Show.ts");
+  });
+
+  it("strips configured strings from the title", () => {
+    const name = outputFilename(
+      makeConfig({ filenameTemplate: "{title}.{ext}", filenameStrip: ["ᴸᶦᵛᵉ"] }),
+      channel,
+      makeProgram({ title: "Rocket Launch ᴸᶦᵛᵉ" }),
+    );
+    assert.equal(name, "Rocket Launch.ts");
+  });
+
+  it("tidies the spaces left by a mid-title strip", () => {
+    const name = outputFilename(
+      makeConfig({ filenameTemplate: "{title}.{ext}", filenameStrip: ["(HD)"] }),
+      channel,
+      makeProgram({ title: "Rocket (HD) Launch" }),
+    );
+    assert.equal(name, "Rocket Launch.ts");
+  });
+
+  it("uses an explicit filenameStrip over the config one", () => {
+    const name = outputFilename(
+      makeConfig({ filenameTemplate: "{title}.{ext}", filenameStrip: ["Launch"] }),
+      channel,
+      makeProgram({ title: "Rocket Launch ᴸᶦᵛᵉ" }),
+      undefined,
+      ["ᴸᶦᵛᵉ"],
+    );
+    assert.equal(name, "Rocket Launch.ts");
   });
 
   it("throws on an unexpected start format", () => {
