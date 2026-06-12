@@ -13,7 +13,7 @@ export interface Config {
   paddingBefore: number;
   /** Minutes to keep recording after the program's scheduled end. */
   paddingAfter: number;
-  /** Output filename template. Supports {channel} {title} {date} {time} {datetime} {ext}. */
+  /** Output filename template. Supports {channel} {title} {date} {time} {datetime} {year} {month} {day} {ext}. Month and day are zero-padded (03, not 3). */
   filenameTemplate: string;
   /** Set the downloaded file's modified time to when the program aired. */
   setAiredTime: boolean;

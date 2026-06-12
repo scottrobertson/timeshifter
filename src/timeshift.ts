@@ -100,8 +100,16 @@ export function outputFilename(
   program: EpgProgram,
   template: string = config.filenameTemplate,
 ): string {
-  const date = program.startLocal.slice(0, 10); // YYYY-MM-DD
-  const time = program.startLocal.slice(11, 16).replace(":", "-"); // HH-MM
+  // The EPG start string comes straight from the panel, so check the format
+  // instead of slicing blind. A bad format would break the catchup URL too,
+  // so failing here beats recording garbage to a garbage filename.
+  const parts = program.startLocal.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+  if (!parts) {
+    throw new Error(`Unexpected EPG start format: "${program.startLocal}"`);
+  }
+  const [, year, month, day, hour, minute] = parts;
+  const date = `${year}-${month}-${day}`;
+  const time = `${hour}-${minute}`;
 
   // Free-text values get sanitised; the date/time/ext tokens are already safe.
   const tokens: Record<string, string> = {
@@ -110,6 +118,9 @@ export function outputFilename(
     date,
     time,
     datetime: `${date}_${time}`,
+    year,
+    month,
+    day,
     ext: "ts",
   };
 

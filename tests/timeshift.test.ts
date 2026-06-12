@@ -175,6 +175,27 @@ describe("outputFilename", () => {
     assert.equal(name, "BBC One/The Show.ts");
   });
 
+  it("fills the year, month and day tokens", () => {
+    const name = outputFilename(
+      makeConfig({ filenameTemplate: "{year}/{month}/{day} {title}.{ext}" }),
+      channel,
+      makeProgram({ title: "The Show", startLocal: "2024-03-10 21:30:00" }),
+    );
+    assert.equal(name, "2024/03/10 The Show.ts");
+  });
+
+  it("throws on an unexpected start format", () => {
+    assert.throws(
+      () =>
+        outputFilename(
+          makeConfig(),
+          channel,
+          makeProgram({ startLocal: "10/03/2024 21:30" }),
+        ),
+      /Unexpected EPG start format/,
+    );
+  });
+
   it("leaves unknown tokens untouched", () => {
     const name = outputFilename(
       makeConfig({ filenameTemplate: "{channel} {bogus}" }),
