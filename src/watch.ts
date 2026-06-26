@@ -81,8 +81,12 @@ async function downloadProgram(
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // A leading newline: a failed download leaves the cursor on the progress bar.
-    console.error(`\n${status("✗ failed")} will retry next poll: ${message}`);
+    const when = program.startLocal.slice(0, 16);
+    // Name the program here: this goes to stderr, so the logs can interleave it
+    // away from the "download" line, and a leading newline clears the progress bar.
+    console.error(
+      `\n${status("✗ failed")} ${when} · ${program.title} · will retry next poll: ${message}`,
+    );
     return false;
   }
 }
