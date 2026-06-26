@@ -163,6 +163,24 @@ export class XtreamSource implements Source {
 
     const listings = data.epg_listings ?? [];
 
+    // Set TIMESHIFTER_DEBUG to dump the panel's raw has_archive per listing,
+    // before we dedupe. Useful when a program looks downloadable but 404s, or
+    // when another tool disagrees about whether it has an archive. A value other
+    // than "1"/"true" is used as a case-insensitive title filter.
+    const debug = process.env.TIMESHIFTER_DEBUG;
+    if (debug) {
+      const filter = debug === "1" || debug === "true" ? "" : debug.toLowerCase();
+      const rows = listings.filter(
+        (item) => !filter || decodeBase64(item.title).toLowerCase().includes(filter),
+      );
+      console.error(`\n[debug] ${rows.length}/${listings.length} raw listings for ${channel.name}:`);
+      for (const item of rows) {
+        const start = (item.start ?? "").slice(0, 16);
+        const flag = String(item.has_archive ?? "");
+        console.error(`[debug]   has_archive=${flag.padEnd(4)} ${start}  ${decodeBase64(item.title)}`);
+      }
+    }
+
     const programs = listings
       .map((item) => ({
         title: decodeBase64(item.title) || "Untitled",
