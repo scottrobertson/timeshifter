@@ -119,6 +119,10 @@ export async function pollOnce(
   // as they scroll past in the log.
   console.log(`\n${pollSeparator(now)}`);
 
+  // Pad the subscription names to the longest so the brackets and everything
+  // after them line up in a column across subscriptions.
+  const nameWidth = Math.max(0, ...watch.subscriptions.map((s) => s.name.length));
+
   for (const sub of watch.subscriptions) {
     const result: SubscriptionPollResult = {
       subscription: sub.name,
@@ -132,7 +136,7 @@ export async function pollOnce(
 
     // Every line leads with the subscription so you can tell where it came from
     // without per-subscription headers.
-    const prefix = `[${sub.name}] `;
+    const prefix = `[${sub.name.padEnd(nameWidth)}] `;
 
     const matching = channels.filter((c) => channelMatches(sub, c));
     if (matching.length === 0) {
