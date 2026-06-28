@@ -10,7 +10,7 @@
     "start": "tsx src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test --test-isolation=none tests/*.test.ts"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.5.2"
