@@ -58,6 +58,7 @@ async function downloadProgram(
   before: number,
   after: number,
   filename: string,
+  prefix: string,
 ): Promise<boolean> {
   try {
     const window = recordingWindow(program, before, after);
@@ -77,7 +78,7 @@ async function downloadProgram(
         // Non-fatal: the recording is fine, only the .nfo didn't get written.
       }
     }
-    console.log(`${status("✓ saved")} ${result.outputPath}`);
+    console.log(`${prefix}${status("✓ saved")} ${result.outputPath}`);
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -85,7 +86,7 @@ async function downloadProgram(
     // Name the program here: this goes to stderr, so the logs can interleave it
     // away from the "download" line, and a leading newline clears the progress bar.
     console.error(
-      `\n${status("✗ failed")} ${when} · ${program.title} · will retry next poll: ${message}`,
+      `\n${prefix}${status("✗ failed")} ${when} · ${program.title} · will retry next poll: ${message}`,
     );
     return false;
   }
@@ -114,9 +115,17 @@ export async function pollOnce(
   const channels = await source.archiveChannels();
   const results: SubscriptionPollResult[] = [];
 
-  for (const sub of watch.subscriptions) {
-    console.log(`\n[${stamp(now)}] ${sub.name}`);
+  // Print the poll header once, the first time there's anything worth showing.
+  // A quiet poll (nothing new, everything already downloaded) never prints it,
+  // so a steady state is just one summary line instead of a screen of skips.
+  let headerShown = false;
+  const showHeader = () => {
+    if (headerShown) return;
+    console.log(`\n[${stamp(now)}]`);
+    headerShown = true;
+  };
 
+  for (const sub of watch.subscriptions) {
     const result: SubscriptionPollResult = {
       subscription: sub.name,
       ready: 0,
@@ -127,9 +136,14 @@ export async function pollOnce(
     };
     results.push(result);
 
+    // Every line leads with the subscription so you can tell where it came from
+    // without per-subscription headers.
+    const prefix = `[${sub.name}] `;
+
     const matching = channels.filter((c) => channelMatches(sub, c));
     if (matching.length === 0) {
-      console.log(`No channel matches "${sub.channel}".`);
+      showHeader();
+      console.log(`${prefix}${status("no match")} no channel matches "${sub.channel}"`);
       continue;
     }
     const before = sub.paddingBefore ?? config.paddingBefore;
@@ -155,8 +169,9 @@ export async function pollOnce(
         const outputPath = path.join(config.downloadDir, filename);
         if (existsSync(outputPath)) {
           result.alreadyHad++;
-          // Refresh the sidecar even when the download is skipped, so an existing
-          // recording still gets (or updates) its .nfo. Only note real changes.
+          // Refresh the sidecar even when the file is already there, so an
+          // existing recording still gets (or updates) its .nfo. Note it on the
+          // line only when it actually changed.
           let note = "";
           if (config.writeNfo) {
             try {
@@ -166,15 +181,17 @@ export async function pollOnce(
               // Non-fatal: the recording is there, only its .nfo didn't update.
             }
           }
-          console.log(`${status("skip")} ${when} · ${program.title}${note}`);
+          showHeader();
+          console.log(`${prefix}${status("have")} ${when} · ${program.title}${note}`);
           continue;
         }
 
         const label = dryRun ? "would get" : "download";
-        console.log(`${status(label)} ${when} · ${program.title}`);
+        showHeader();
+        console.log(`${prefix}${status(label)} ${when} · ${program.title}`);
         result.listed++;
         if (dryRun) continue;
-        if (await downloadProgram(config, source, channel, program, before, after, filename)) {
+        if (await downloadProgram(config, source, channel, program, before, after, filename, prefix)) {
           result.downloaded++;
         } else {
           result.failed++;
@@ -182,13 +199,43 @@ export async function pollOnce(
       }
     }
 
-    const outcome = dryRun
-      ? `${result.listed} would download`
-      : `${result.downloaded} downloaded${result.failed ? `, ${result.failed} failed` : ""}`;
-    console.log(`\n${result.ready} ready · ${outcome} · ${result.alreadyHad} already had`);
   }
 
+  // One summary for the whole poll. When the header was shown it follows the
+  // activity; when the poll was quiet it carries its own timestamp so there's
+  // still a heartbeat line.
+  const line = pollSummaryLine(results, watch.subscriptions.length, dryRun);
+  console.log(headerShown ? `\n${line}` : `\n[${stamp(now)}] ${line}`);
+
   return results;
+}
+
+function pollSummaryLine(
+  results: SubscriptionPollResult[],
+  subscriptions: number,
+  dryRun: boolean,
+): string {
+  const total = results.reduce(
+    (acc, r) => ({
+      listed: acc.listed + r.listed,
+      downloaded: acc.downloaded + r.downloaded,
+      failed: acc.failed + r.failed,
+      alreadyHad: acc.alreadyHad + r.alreadyHad,
+    }),
+    { listed: 0, downloaded: 0, failed: 0, alreadyHad: 0 },
+  );
+
+  const parts = [`${subscriptions} sub${subscriptions === 1 ? "" : "s"}`];
+  if (dryRun) {
+    parts.push(total.listed ? `${total.listed} would download` : "nothing new");
+  } else if (total.downloaded || total.failed) {
+    parts.push(`${total.downloaded} downloaded`);
+    if (total.failed) parts.push(`${total.failed} failed`);
+  } else {
+    parts.push("nothing new");
+  }
+  if (total.alreadyHad) parts.push(`${total.alreadyHad} already had`);
+  return parts.join(" · ");
 }
 
 export async function runWatch(config: Config, dryRun = false): Promise<void> {
