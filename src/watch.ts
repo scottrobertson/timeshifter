@@ -78,15 +78,15 @@ async function downloadProgram(
         // Non-fatal: the recording is fine, only the .nfo didn't get written.
       }
     }
-    console.log(`${prefix}${status("✓ saved")} ${result.outputPath}`);
+    const gb = (result.bytesDownloaded / 1e9).toFixed(2);
+    console.log(`${prefix}${status("✓ saved")} ${gb} GB · ${result.outputPath}`);
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const when = program.startLocal.slice(0, 16);
-    // Name the program here: this goes to stderr, so the logs can interleave it
-    // away from the "download" line, and a leading newline clears the progress bar.
+    // Name the program again so the failure stands on its own in the log.
     console.error(
-      `\n${prefix}${status("✗ failed")} ${when} · ${program.title} · will retry next poll: ${message}`,
+      `${prefix}${status("✗ failed")} ${when} · ${program.title} · will retry next poll: ${message}`,
     );
     return false;
   }
@@ -115,15 +115,9 @@ export async function pollOnce(
   const channels = await source.archiveChannels();
   const results: SubscriptionPollResult[] = [];
 
-  // Print the poll header once, the first time there's anything worth showing.
-  // A quiet poll (nothing new, everything already downloaded) never prints it,
-  // so a steady state is just one summary line instead of a screen of skips.
-  let headerShown = false;
-  const showHeader = () => {
-    if (headerShown) return;
-    console.log(`\n[${stamp(now)}]`);
-    headerShown = true;
-  };
+  // A rule line with the time starts each poll, so they're easy to tell apart
+  // as they scroll past in the log.
+  console.log(`\n${pollSeparator(now)}`);
 
   for (const sub of watch.subscriptions) {
     const result: SubscriptionPollResult = {
@@ -142,7 +136,6 @@ export async function pollOnce(
 
     const matching = channels.filter((c) => channelMatches(sub, c));
     if (matching.length === 0) {
-      showHeader();
       console.log(`${prefix}${status("no match")} no channel matches "${sub.channel}"`);
       continue;
     }
@@ -181,13 +174,11 @@ export async function pollOnce(
               // Non-fatal: the recording is there, only its .nfo didn't update.
             }
           }
-          showHeader();
           console.log(`${prefix}${status("have")} ${when} · ${program.title}${note}`);
           continue;
         }
 
         const label = dryRun ? "would get" : "download";
-        showHeader();
         console.log(`${prefix}${status(label)} ${when} · ${program.title}`);
         result.listed++;
         if (dryRun) continue;
@@ -201,13 +192,16 @@ export async function pollOnce(
 
   }
 
-  // One summary for the whole poll. When the header was shown it follows the
-  // activity; when the poll was quiet it carries its own timestamp so there's
-  // still a heartbeat line.
-  const line = pollSummaryLine(results, watch.subscriptions.length, dryRun);
-  console.log(headerShown ? `\n${line}` : `\n[${stamp(now)}] ${line}`);
+  // One summary for the whole poll, under the separator and any activity.
+  console.log(`\n${pollSummaryLine(results, watch.subscriptions.length, dryRun)}`);
 
   return results;
+}
+
+// A full-width rule carrying the poll time, e.g. "── 2026-06-28 16:03:21 ──…".
+function pollSeparator(now: number): string {
+  const label = `── ${stamp(now)} `;
+  return label + "─".repeat(Math.max(0, 60 - label.length));
 }
 
 function pollSummaryLine(

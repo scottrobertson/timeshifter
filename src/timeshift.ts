@@ -198,6 +198,8 @@ export async function streamToFile(
     // The server tends to close a touch before the advertised length. If we got
     // essentially all of it that's fine; only a real shortfall is a failure.
     if (!(expectedBytes && bytesDownloaded >= expectedBytes * 0.99)) {
+      // Clear the in-place progress bar so the error doesn't tack onto it.
+      if (tty && lastRender > 0) process.stdout.write("\r\x1b[K");
       throw err;
     }
   }
@@ -248,13 +250,13 @@ function remux(input: string, output: string): Promise<void> {
 }
 
 /**
- * A small spinner for a step of unknown length. Returns a finish function:
- * call it with the completed-step label to replace the spinner with a tick.
+ * A small spinner for a step of unknown length. Returns a finish function that
+ * clears the spinner; the line that follows (e.g. "saved") is the done signal.
  */
-function startStep(label: string): (doneLabel: string) => void {
+function startStep(label: string): () => void {
   if (!process.stdout.isTTY) {
     process.stdout.write(`  ${label}…\n`);
-    return (doneLabel) => process.stdout.write(`  ✓ ${doneLabel}\n`);
+    return () => {};
   }
   const frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".split("");
   let i = 0;
@@ -263,9 +265,9 @@ function startStep(label: string): (doneLabel: string) => void {
     i = (i + 1) % frames.length;
     process.stdout.write(`\r  ${frames[i]} ${label}…`);
   }, 80);
-  return (doneLabel) => {
+  return () => {
     clearInterval(timer);
-    process.stdout.write(`\r\x1b[K  ✓ ${doneLabel}\n`);
+    process.stdout.write("\r\x1b[K");
   };
 }
 
@@ -292,7 +294,6 @@ export async function download(
 
   const { bytesDownloaded, expectedBytes } = await streamToFile(config, url, downloadPath);
 
-  console.log(`  ✓ Downloaded ${(bytesDownloaded / 1e9).toFixed(2)} GB`);
   if (expectedBytes && bytesDownloaded < expectedBytes * 0.99) {
     console.log(
       `  ⚠️  Expected about ${(expectedBytes / 1e9).toFixed(2)} GB, so this may be incomplete.`,
@@ -308,7 +309,7 @@ export async function download(
     await rm(remuxPath, { force: true });
     throw err;
   }
-  finishRemux("Processed");
+  finishRemux();
 
   await rm(downloadPath, { force: true });
   await rename(remuxPath, outputPath); // atomic: the library sees it appear complete
