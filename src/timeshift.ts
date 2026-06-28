@@ -198,8 +198,7 @@ export async function streamToFile(
     // The server tends to close a touch before the advertised length. If we got
     // essentially all of it that's fine; only a real shortfall is a failure.
     if (!(expectedBytes && bytesDownloaded >= expectedBytes * 0.99)) {
-      // Clear the in-place progress bar so the error doesn't tack onto it.
-      if (tty && lastRender > 0) process.stdout.write("\r\x1b[K");
+      clearProgressLine();
       throw err;
     }
   }
@@ -250,6 +249,14 @@ function remux(input: string, output: string): Promise<void> {
 }
 
 /**
+ * Wipe the current terminal line, e.g. an in-place progress bar or spinner, so
+ * the next message starts clean. A no-op when output isn't a terminal.
+ */
+function clearProgressLine(): void {
+  if (process.stdout.isTTY) process.stdout.write("\r\x1b[K");
+}
+
+/**
  * A small spinner for a step of unknown length. Returns a finish function that
  * clears the spinner; the line that follows (e.g. "saved") is the done signal.
  */
@@ -267,7 +274,7 @@ function startStep(label: string): () => void {
   }, 80);
   return () => {
     clearInterval(timer);
-    process.stdout.write("\r\x1b[K");
+    clearProgressLine();
   };
 }
 
@@ -304,7 +311,7 @@ export async function download(
   try {
     await remux(downloadPath, remuxPath);
   } catch (err) {
-    process.stdout.write("\r\x1b[K"); // clear the spinner line before the error
+    clearProgressLine();
     await rm(downloadPath, { force: true });
     await rm(remuxPath, { force: true });
     throw err;
