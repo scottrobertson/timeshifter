@@ -78,6 +78,9 @@ async function downloadProgram(
         // Non-fatal: the recording is fine, only the .nfo didn't get written.
       }
     }
+    const gb = (result.bytesDownloaded / 1e9).toFixed(2);
+    console.log(`${prefix}${status("✓ saved")} ${gb} GB · ${result.outputPath}`);
+    // After the saved line, so the comskip spinner sits under the recording it's for.
     if (config.comskip) {
       try {
         await ensureEdl(result.outputPath);
@@ -85,8 +88,6 @@ async function downloadProgram(
         // Non-fatal: the recording is fine, only the .edl didn't get generated.
       }
     }
-    const gb = (result.bytesDownloaded / 1e9).toFixed(2);
-    console.log(`${prefix}${status("✓ saved")} ${gb} GB · ${result.outputPath}`);
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -185,17 +186,18 @@ export async function pollOnce(
               // Non-fatal: the recording is there, only its .nfo didn't update.
             }
           }
+          // Print the recording first, so a backfill comskip run (which blocks
+          // for minutes) shows its spinner under the file it's working on.
+          console.log(`${prefix}${status("have")} ${when} · ${program.title}${note}`);
           if (config.comskip) {
             try {
               // Backfill: generate the .edl for a recording we already have but
               // that's missing one. It only runs comskip once, then no-ops.
-              const edl = await ensureEdl(outputPath);
-              if (edl.status === "created") note += " · created .edl";
+              await ensureEdl(outputPath);
             } catch {
               // Non-fatal: leave the recording as-is, try again next poll.
             }
           }
-          console.log(`${prefix}${status("have")} ${when} · ${program.title}${note}`);
           continue;
         }
 
