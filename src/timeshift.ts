@@ -585,6 +585,10 @@ export async function ensureEdl(outputPath: string): Promise<EdlResult> {
   } finally {
     if (tty) clearProgressLine();
     await ini.cleanup();
+    // The -v we pass for progress makes comskip drop a .log next to the
+    // recording; we only want the .edl, so bin it.
+    const base = path.basename(outputPath, path.extname(outputPath));
+    await rm(path.join(path.dirname(outputPath), `${base}.log`), { force: true });
   }
 
   if (!existsSync(edlPath)) {

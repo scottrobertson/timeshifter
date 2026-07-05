@@ -531,6 +531,8 @@ describe("ensureEdl", () => {
     assert.equal(result.status, "created");
     assert.equal(result.path, path.join(dir, "Artemis II Launch.edl"));
     assert.ok(await readFile(result.path)); // the .edl exists
+    // The .log comskip drops (from the -v we pass for progress) is cleaned up.
+    assert.deepEqual((await readdir(dir)).sort(), ["Artemis II Launch.edl", "Artemis II Launch.ts"]);
   });
 
   it("treats an empty .edl from a non-zero exit as success (no commercials found)", async () => {
