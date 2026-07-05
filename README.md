@@ -142,6 +142,7 @@ Add a `watch` block to your `config.json` (see `config.example.json`):
 - `paddingBefore` / `paddingAfter` (optional) override the global padding for this rule.
 - `filenameTemplate` (optional) overrides the global `filenameTemplate` for this rule, so you can sort each subscription into its own folder, e.g. `"NASA/{title} - {date}.{ext}"`.
 - `filenameStrip` (optional) overrides the global `filenameStrip` for this rule.
+- `comskip` (optional) overrides the global `comskip` for this rule, either way: set `false` to turn it off on a subscription even when it's on globally, or `true` to turn it on for just this one.
 - `pollIntervalMinutes` (default 10) is how often the guide is re-checked. `readyGraceMinutes` (default 0) adds an extra wait after a show ends before downloading, if your provider is slow to make catchup available.
 
 It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. `config.json` is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
@@ -214,6 +215,7 @@ Set `"comskip": true` to run [comskip](https://github.com/erikkaashoek/Comskip) 
 
 - It runs after the download, so it adds some processing time per recording (comskip reads the whole file).
 - In watch mode it also **backfills**: any recording already in your download dir that's missing a `.edl` gets one on the next poll, then it's left alone.
+- This is the global default. Each subscription can override it with its own `comskip` (see [Watch mode](#watch-mode-automatic-downloads)), so you can leave it on for most and turn it off on the odd one, or the other way around.
 - The Docker image bundles comskip, so `"comskip": true` works out of the box. Running with Node instead, install comskip yourself and either put it on your `PATH` or point `COMSKIP_PATH` at the binary.
 - `COMSKIP_PATH` overrides which comskip binary is used, if you want a specific build.
 - Detection runs with comskip's defaults. To tune it, point `COMSKIP_INI` at your own `comskip.ini`; otherwise a minimal built-in one is used that just turns on `.edl` output.

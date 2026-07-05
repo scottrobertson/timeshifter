@@ -8,7 +8,7 @@ import { isDue, pollOnce, type SubscriptionPollResult } from "../src/watch.js";
 import type { Config } from "../src/config.js";
 import type { Channel, EpgProgram, Source } from "../src/source.js";
 import type { Subscription, WatchConfig } from "../src/subscriptions.js";
-import { installFakeFfmpeg } from "./support.js";
+import { installFakeComskip, installFakeFfmpeg } from "./support.js";
 
 function makeProgram(overrides: Partial<EpgProgram> = {}): EpgProgram {
   const start = new Date(Date.UTC(2026, 5, 7, 12, 0, 0));
@@ -70,11 +70,14 @@ describe("pollOnce", () => {
   const recordingName = "Artemis II - Moon Launch ᴸᶦᵛᵉ.ts";
 
   const realFetch = globalThis.fetch;
+  const realComskipPath = process.env.COMSKIP_PATH;
   let restoreFfmpeg: (() => void) | undefined;
   afterEach(() => {
     globalThis.fetch = realFetch;
     restoreFfmpeg?.();
     restoreFfmpeg = undefined;
+    if (realComskipPath === undefined) delete process.env.COMSKIP_PATH;
+    else process.env.COMSKIP_PATH = realComskipPath;
   });
 
   function makeConfig(downloadDir: string, overrides: Partial<Config> = {}): Config {
@@ -209,6 +212,42 @@ describe("pollOnce", () => {
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
     assert.equal(existsSync(path.join(dir, "Artemis II - Moon Launch.ts")), true);
+  });
+
+  it("skips comskip when the subscription overrides the global on with false", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+    serveBytes("launch footage");
+    restoreFfmpeg = await installFakeFfmpeg("copy");
+    process.env.COMSKIP_PATH = await installFakeComskip("edl");
+
+    const results = await pollOnce(
+      makeConfig(dir, { comskip: true }),
+      fakeSource([makeProgram()]),
+      makeWatch({ comskip: false }),
+      false,
+      now,
+    );
+
+    assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
+    assert.equal(existsSync(path.join(dir, "Artemis II - Moon Launch ᴸᶦᵛᵉ.edl")), false);
+  });
+
+  it("runs comskip when the subscription overrides the global off with true", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+    serveBytes("launch footage");
+    restoreFfmpeg = await installFakeFfmpeg("copy");
+    process.env.COMSKIP_PATH = await installFakeComskip("edl");
+
+    const results = await pollOnce(
+      makeConfig(dir, { comskip: false }),
+      fakeSource([makeProgram()]),
+      makeWatch({ comskip: true }),
+      false,
+      now,
+    );
+
+    assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
+    assert.equal(existsSync(path.join(dir, "Artemis II - Moon Launch ᴸᶦᵛᵉ.edl")), true);
   });
 
   it("lists without downloading on a dry run", async () => {

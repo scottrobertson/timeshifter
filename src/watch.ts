@@ -59,6 +59,7 @@ async function downloadProgram(
   after: number,
   filename: string,
   prefix: string,
+  comskip: boolean,
 ): Promise<boolean> {
   try {
     const window = recordingWindow(program, before, after);
@@ -81,7 +82,7 @@ async function downloadProgram(
     const gb = (result.bytesDownloaded / 1e9).toFixed(2);
     console.log(`${prefix}${status("✓ saved")} ${gb} GB · ${result.outputPath}`);
     // After the saved line, so the comskip spinner sits under the recording it's for.
-    if (config.comskip) {
+    if (comskip) {
       try {
         await ensureEdl(result.outputPath);
       } catch {
@@ -153,6 +154,7 @@ export async function pollOnce(
     }
     const before = sub.paddingBefore ?? config.paddingBefore;
     const after = sub.paddingAfter ?? config.paddingAfter;
+    const comskip = sub.comskip ?? config.comskip;
     // No "from" means take the whole archive (file-exists dedup stops repeats).
     const cutoff = sub.from ? Date.parse(sub.from) : Number.NEGATIVE_INFINITY;
 
@@ -189,7 +191,7 @@ export async function pollOnce(
           // Print the recording first, so a backfill comskip run (which blocks
           // for minutes) shows its spinner under the file it's working on.
           console.log(`${prefix}${status("have")} ${when} · ${program.title}${note}`);
-          if (config.comskip) {
+          if (comskip) {
             try {
               // Backfill: generate the .edl for a recording we already have but
               // that's missing one. It only runs comskip once, then no-ops.
@@ -205,7 +207,7 @@ export async function pollOnce(
         console.log(`${prefix}${status(label)} ${when} · ${program.title}`);
         result.listed++;
         if (dryRun) continue;
-        if (await downloadProgram(config, source, channel, program, before, after, filename, prefix)) {
+        if (await downloadProgram(config, source, channel, program, before, after, filename, prefix, comskip)) {
           result.downloaded++;
         } else {
           result.failed++;

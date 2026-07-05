@@ -132,4 +132,31 @@ describe("loadWatchConfig", () => {
     });
     assert.throws(() => loadWatchConfig(file), /"from" that must be a date/);
   });
+
+  it("leaves comskip undefined when omitted, so it falls back to the global", async () => {
+    const file = await writeTemp({
+      subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: ["Launch"] }],
+    });
+    const config = loadWatchConfig(file);
+    assert.equal(config.subscriptions[0]!.comskip, undefined);
+  });
+
+  it("keeps an explicit comskip override, either direction", async () => {
+    const file = await writeTemp({
+      subscriptions: [
+        { name: "On", channel: "NASA TV", titleContains: ["Launch"], comskip: true },
+        { name: "Off", channel: "NASA TV", titleContains: ["Launch"], comskip: false },
+      ],
+    });
+    const config = loadWatchConfig(file);
+    assert.equal(config.subscriptions[0]!.comskip, true);
+    assert.equal(config.subscriptions[1]!.comskip, false);
+  });
+
+  it("throws on a non-boolean comskip", async () => {
+    const file = await writeTemp({
+      subscriptions: [{ name: "Launches", channel: "NASA TV", titleContains: ["x"], comskip: "yes" }],
+    });
+    assert.throws(() => loadWatchConfig(file), /"comskip" that must be true or false/);
+  });
 });

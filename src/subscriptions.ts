@@ -24,6 +24,8 @@ export interface Subscription {
   filenameTemplate?: string;
   /** Strings to remove from the title when building the filename. Falls back to the global filenameStrip. */
   filenameStrip?: string[];
+  /** Generate a comskip .edl for this subscription. Set false to turn it off even when the global comskip is on, or true to turn it on when the global is off. Falls back to the global comskip. */
+  comskip?: boolean;
 }
 
 export interface WatchConfig {
@@ -87,6 +89,14 @@ function asString(value: unknown, field: string): string | undefined {
   return value;
 }
 
+function asBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") {
+    fail(`has a "${field}" that must be true or false.`);
+  }
+  return value;
+}
+
 function parseSubscription(item: unknown, index: number): Subscription {
   if (typeof item !== "object" || item === null) {
     fail(`has a subscription at position ${index} that isn't an object.`);
@@ -118,6 +128,7 @@ function parseSubscription(item: unknown, index: number): Subscription {
     filenameStrip: obj.filenameStrip === undefined
       ? undefined
       : asStringArray(obj.filenameStrip, "filenameStrip"),
+    comskip: asBoolean(obj.comskip, "comskip"),
   };
 }
 
