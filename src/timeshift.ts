@@ -493,19 +493,44 @@ async function comskipIni(): Promise<{ path: string; cleanup: () => Promise<void
   return { path: iniPath, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
-/** Run comskip on a recording, writing the .edl next to it. Resolves with its stderr. */
-function runComskip(input: string, iniPath: string): Promise<string> {
+/**
+ * Run comskip on a recording, writing the .edl next to it. Reports its progress
+ * percentage via onProgress, and resolves with any non-progress messages (for
+ * the error when no .edl comes out).
+ */
+function runComskip(
+  input: string,
+  iniPath: string,
+  onProgress: (percent: number) => void,
+): Promise<string> {
   // Override with COMSKIP_PATH; the Docker image points it at the bundled build.
   const bin = process.env.COMSKIP_PATH || "comskip";
   const dir = path.dirname(input);
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, [`--ini=${iniPath}`, `--output=${dir}`, input], {
+    // -v 1 makes comskip print its progress percentage (to stderr) even when its
+    // output isn't a terminal; without it there's no progress at all in the logs.
+    const child = spawn(bin, ["-v", "1", `--ini=${iniPath}`, `--output=${dir}`, input], {
       cwd: dir,
       stdio: ["ignore", "ignore", "pipe"],
     });
-    let stderr = "";
+
+    // comskip updates progress in place with \r, so split on that too. Lines
+    // ending in a percentage are progress; anything else is a real message.
+    let messages = "";
+    let buffer = "";
+    const take = (segment: string): void => {
+      const percent = segment.match(/(\d+)%\s*$/);
+      if (percent) onProgress(Number(percent[1]));
+      else if (segment.trim()) messages += `${segment.trim()}\n`;
+    };
     child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => (stderr += chunk));
+    child.stderr.on("data", (chunk: string) => {
+      buffer += chunk;
+      const segments = buffer.split(/[\r\n]/);
+      buffer = segments.pop() ?? "";
+      segments.forEach(take);
+    });
+
     child.on("error", (err) => {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         reject(new Error("comskip not found. Install it or set COMSKIP_PATH."));
@@ -515,7 +540,10 @@ function runComskip(input: string, iniPath: string): Promise<string> {
     });
     // comskip exits non-zero just for "no commercials found", so the exit code
     // isn't a failure signal. ensureEdl checks whether the .edl was written.
-    child.on("close", () => resolve(stderr));
+    child.on("close", () => {
+      take(buffer);
+      resolve(messages.trim());
+    });
   });
 }
 
@@ -535,18 +563,32 @@ export async function ensureEdl(outputPath: string): Promise<EdlResult> {
   const edlPath = edlPathFor(outputPath);
   if (existsSync(edlPath)) return { status: "exists", path: edlPath };
 
-  const finish = startStep("Detecting commercials with comskip");
+  // On a TTY, redraw the percentage in place. Without one (e.g. Docker logs)
+  // \r-redraws never flush, so print each 10% on its own line instead.
+  const tty = Boolean(process.stdout.isTTY);
+  const label = "Detecting commercials with comskip";
+  process.stdout.write(tty ? `  ${label}…` : `  ${label}…\n`);
+  let printed = 0;
+  const onProgress = (percent: number): void => {
+    if (tty) {
+      process.stdout.write(`\r  ${label}… ${percent}%   `);
+    } else if (percent >= printed + 10 && percent < 100) {
+      printed = percent - (percent % 10);
+      process.stdout.write(`    ${percent}%\n`);
+    }
+  };
+
   const ini = await comskipIni();
-  let stderr = "";
+  let messages = "";
   try {
-    stderr = await runComskip(outputPath, ini.path);
+    messages = await runComskip(outputPath, ini.path, onProgress);
   } finally {
-    finish();
+    if (tty) clearProgressLine();
     await ini.cleanup();
   }
 
   if (!existsSync(edlPath)) {
-    throw new Error(`comskip produced no .edl${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
+    throw new Error(`comskip produced no .edl${messages ? `: ${messages}` : ""}`);
   }
   return { status: "created", path: edlPath };
 }
