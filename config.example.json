@@ -10,6 +10,7 @@
   "filenameStrip": [],
   "setAiredTime": true,
   "writeNfo": true,
+  "comskip": false,
   "watch": {
     "pollIntervalMinutes": 10,
     "readyGraceMinutes": 0,

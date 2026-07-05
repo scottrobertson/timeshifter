@@ -35,3 +35,36 @@ export async function installFakeFfmpeg(kind: "copy" | "fail"): Promise<() => vo
     process.env.PATH = realPath;
   };
 }
+
+// A fake comskip. It's given the video as the last argument. The "edl" variant
+// writes an .edl and exits 0; "empty" writes an (empty) .edl but exits non-zero,
+// like real comskip when it finds no commercials; "fail" writes nothing and
+// exits non-zero, like a genuine error.
+const COMSKIP_EDL_SCRIPT = `#!/bin/sh
+for arg in "$@"; do input="$arg"; done
+: > "\${input%.*}.edl"
+`;
+
+const COMSKIP_EMPTY_SCRIPT = `#!/bin/sh
+for arg in "$@"; do input="$arg"; done
+: > "\${input%.*}.edl"
+exit 1
+`;
+
+const COMSKIP_FAIL_SCRIPT = `#!/bin/sh
+echo "no video stream" >&2
+exit 1
+`;
+
+/**
+ * Write a fake comskip and return its path to set as COMSKIP_PATH. Restore
+ * COMSKIP_PATH yourself in afterEach.
+ */
+export async function installFakeComskip(kind: "edl" | "empty" | "fail"): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), "fake-comskip-"));
+  const script =
+    kind === "edl" ? COMSKIP_EDL_SCRIPT : kind === "empty" ? COMSKIP_EMPTY_SCRIPT : COMSKIP_FAIL_SCRIPT;
+  const bin = path.join(dir, "comskip");
+  await writeFile(bin, script, { mode: 0o755 });
+  return bin;
+}

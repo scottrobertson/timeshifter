@@ -17,6 +17,7 @@ const config: Config = {
   filenameStrip: [],
   setAiredTime: true,
   writeNfo: true,
+  comskip: false,
 };
 
 const realFetch = globalThis.fetch;

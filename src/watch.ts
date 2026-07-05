@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
-import { download, outputFilename, recordingWindow, setFileTime, syncNfo } from "./timeshift.js";
+import { download, ensureEdl, outputFilename, recordingWindow, setFileTime, syncNfo } from "./timeshift.js";
 import {
   channelMatches,
   loadWatchConfig,
@@ -76,6 +76,13 @@ async function downloadProgram(
         await syncNfo(program, result.outputPath, new Date());
       } catch {
         // Non-fatal: the recording is fine, only the .nfo didn't get written.
+      }
+    }
+    if (config.comskip) {
+      try {
+        await ensureEdl(result.outputPath);
+      } catch {
+        // Non-fatal: the recording is fine, only the .edl didn't get generated.
       }
     }
     const gb = (result.bytesDownloaded / 1e9).toFixed(2);
@@ -176,6 +183,16 @@ export async function pollOnce(
               if (nfo.status !== "unchanged") note = ` · ${nfo.status} .nfo`;
             } catch {
               // Non-fatal: the recording is there, only its .nfo didn't update.
+            }
+          }
+          if (config.comskip) {
+            try {
+              // Backfill: generate the .edl for a recording we already have but
+              // that's missing one. It only runs comskip once, then no-ops.
+              const edl = await ensureEdl(outputPath);
+              if (edl.status === "created") note += " · created .edl";
+            } catch {
+              // Non-fatal: leave the recording as-is, try again next poll.
             }
           }
           console.log(`${prefix}${status("have")} ${when} · ${program.title}${note}`);

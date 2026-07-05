@@ -4,6 +4,7 @@ import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
 import {
   download,
+  ensureEdl,
   outputFilename,
   recordingWindow,
   setFileTime,
@@ -188,6 +189,15 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
       console.log("  ✓ Wrote .nfo metadata");
     } catch {
       console.log("  ⚠️  Could not write the .nfo");
+    }
+  }
+
+  if (config.comskip) {
+    try {
+      await ensureEdl(result.outputPath);
+      console.log("  ✓ Generated the .edl (comskip)");
+    } catch (err) {
+      console.log(`  ⚠️  comskip failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

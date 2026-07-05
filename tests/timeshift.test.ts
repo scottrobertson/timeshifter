@@ -7,6 +7,8 @@ import {
   buildNfo,
   buildTimeshiftUrl,
   download,
+  edlPathFor,
+  ensureEdl,
   formatStartForUrl,
   nfoPathFor,
   outputFilename,
@@ -17,7 +19,7 @@ import {
 } from "../src/timeshift.js";
 import type { Config } from "../src/config.js";
 import type { Channel, EpgProgram } from "../src/source.js";
-import { installFakeFfmpeg } from "./support.js";
+import { installFakeComskip, installFakeFfmpeg } from "./support.js";
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -33,6 +35,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     filenameStrip: [],
     setAiredTime: true,
     writeNfo: true,
+    comskip: false,
     ...overrides,
   };
 }
@@ -498,5 +501,79 @@ describe("download", () => {
       process.env.PATH = realPath;
     }
     assert.deepEqual(await readdir(dir), []);
+  });
+});
+
+describe("edlPathFor", () => {
+  it("swaps the .ts extension for .edl and keeps the directory", () => {
+    assert.equal(
+      edlPathFor("/catchup/NASA TV/Launch - 2024-03-10_12-00.ts"),
+      "/catchup/NASA TV/Launch - 2024-03-10_12-00.edl",
+    );
+  });
+});
+
+describe("ensureEdl", () => {
+  const realComskipPath = process.env.COMSKIP_PATH;
+  afterEach(() => {
+    if (realComskipPath === undefined) delete process.env.COMSKIP_PATH;
+    else process.env.COMSKIP_PATH = realComskipPath;
+  });
+
+  it("runs comskip to create the .edl when it's missing", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const recording = path.join(dir, "Artemis II Launch.ts");
+    await writeFile(recording, "x");
+    process.env.COMSKIP_PATH = await installFakeComskip("edl");
+
+    const result = await ensureEdl(recording);
+
+    assert.equal(result.status, "created");
+    assert.equal(result.path, path.join(dir, "Artemis II Launch.edl"));
+    assert.ok(await readFile(result.path)); // the .edl exists
+  });
+
+  it("treats an empty .edl from a non-zero exit as success (no commercials found)", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const recording = path.join(dir, "clean.ts");
+    await writeFile(recording, "x");
+    process.env.COMSKIP_PATH = await installFakeComskip("empty");
+
+    const result = await ensureEdl(recording);
+
+    assert.equal(result.status, "created");
+    assert.equal((await readFile(result.path)).toString(), "");
+  });
+
+  it("leaves an existing .edl alone and doesn't run comskip", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const recording = path.join(dir, "show.ts");
+    await writeFile(recording, "x");
+    await writeFile(path.join(dir, "show.edl"), "kept");
+    // A failing comskip: if ensureEdl ran it, the call would reject.
+    process.env.COMSKIP_PATH = await installFakeComskip("fail");
+
+    const result = await ensureEdl(recording);
+
+    assert.equal(result.status, "exists");
+    assert.equal((await readFile(result.path)).toString(), "kept");
+  });
+
+  it("rejects when comskip writes no .edl, so callers can treat it as non-fatal", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const recording = path.join(dir, "show.ts");
+    await writeFile(recording, "x");
+    process.env.COMSKIP_PATH = await installFakeComskip("fail");
+
+    await assert.rejects(ensureEdl(recording), /comskip produced no .edl: no video stream/);
+  });
+
+  it("explains how to install comskip when the binary is missing", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const recording = path.join(dir, "show.ts");
+    await writeFile(recording, "x");
+    process.env.COMSKIP_PATH = path.join(dir, "does-not-exist");
+
+    await assert.rejects(ensureEdl(recording), /comskip not found/);
   });
 });

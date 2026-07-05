@@ -29,6 +29,7 @@ describe("loadConfig", () => {
     assert.equal(config.paddingAfter, 0);
     assert.equal(config.setAiredTime, true); // on by default
     assert.equal(config.writeNfo, true); // on by default
+    assert.equal(config.comskip, false); // off by default
   });
 
   it("throws when downloadDir is missing", () => {
@@ -59,6 +60,11 @@ describe("loadConfig", () => {
   it("turns writeNfo off when set to false but rejects non-booleans", () => {
     assert.equal(loadWith({ ...BASE, writeNfo: false }).writeNfo, false);
     assert.throws(() => loadWith({ ...BASE, writeNfo: "yes" }));
+  });
+
+  it("turns comskip on when set to true but rejects non-booleans", () => {
+    assert.equal(loadWith({ ...BASE, comskip: true }).comskip, true);
+    assert.throws(() => loadWith({ ...BASE, comskip: "yes" }));
   });
 
   it("throws on invalid JSON", () => {

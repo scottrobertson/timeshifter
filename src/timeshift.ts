@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, rm, utimes, writeFile } from "node:fs/promises";
+import { createWriteStream, existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rename, rm, utimes, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, RecordingWindow } from "./source.js";
@@ -464,4 +465,88 @@ export async function syncNfo(
 
   await writeFile(nfoPath, contents, "utf8");
   return { status: existing === null ? "created" : "updated", path: nfoPath };
+}
+
+/** The .edl sidecar path for a recording: same name, .edl extension. */
+export function edlPathFor(outputPath: string): string {
+  const dir = path.dirname(outputPath);
+  const base = path.basename(outputPath, path.extname(outputPath));
+  return path.join(dir, `${base}.edl`);
+}
+
+// comskip only writes the .edl when output_edl is on, and its default also
+// litters .txt/.log files next to the recording, so we turn those off. Detection
+// tuning stays at comskip's defaults; point COMSKIP_INI at your own file to change it.
+const DEFAULT_COMSKIP_INI = `[Main Settings]
+output_edl=1
+output_txt=0
+output_default=0
+`;
+
+/** The comskip.ini to run with: the user's COMSKIP_INI, or a temp default. */
+async function comskipIni(): Promise<{ path: string; cleanup: () => Promise<void> }> {
+  const custom = process.env.COMSKIP_INI;
+  if (custom) return { path: custom, cleanup: async () => {} };
+  const dir = await mkdtemp(path.join(tmpdir(), "comskip-"));
+  const iniPath = path.join(dir, "comskip.ini");
+  await writeFile(iniPath, DEFAULT_COMSKIP_INI);
+  return { path: iniPath, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+/** Run comskip on a recording, writing the .edl next to it. Resolves with its stderr. */
+function runComskip(input: string, iniPath: string): Promise<string> {
+  // Override with COMSKIP_PATH; the Docker image points it at the bundled build.
+  const bin = process.env.COMSKIP_PATH || "comskip";
+  const dir = path.dirname(input);
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, [`--ini=${iniPath}`, `--output=${dir}`, input], {
+      cwd: dir,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => (stderr += chunk));
+    child.on("error", (err) => {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error("comskip not found. Install it or set COMSKIP_PATH."));
+      } else {
+        reject(err);
+      }
+    });
+    // comskip exits non-zero just for "no commercials found", so the exit code
+    // isn't a failure signal. ensureEdl checks whether the .edl was written.
+    child.on("close", () => resolve(stderr));
+  });
+}
+
+export interface EdlResult {
+  status: "created" | "exists";
+  path: string;
+}
+
+/**
+ * Make sure a recording has its comskip .edl. Comskip takes minutes, so we only
+ * run it when the .edl is missing; if one is already there we leave it. A
+ * commercial-free recording still gets an empty .edl, so it isn't reprocessed
+ * every poll. Throws if comskip wrote no .edl, so callers can treat it as
+ * non-fatal, like the .nfo.
+ */
+export async function ensureEdl(outputPath: string): Promise<EdlResult> {
+  const edlPath = edlPathFor(outputPath);
+  if (existsSync(edlPath)) return { status: "exists", path: edlPath };
+
+  const finish = startStep("Detecting commercials with comskip");
+  const ini = await comskipIni();
+  let stderr = "";
+  try {
+    stderr = await runComskip(outputPath, ini.path);
+  } finally {
+    finish();
+    await ini.cleanup();
+  }
+
+  if (!existsSync(edlPath)) {
+    throw new Error(`comskip produced no .edl${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
+  }
+  return { status: "created", path: edlPath };
 }

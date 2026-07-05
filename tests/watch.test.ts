@@ -91,6 +91,7 @@ describe("pollOnce", () => {
       filenameStrip: [],
       setAiredTime: false,
       writeNfo: false,
+      comskip: false,
       ...overrides,
     };
   }

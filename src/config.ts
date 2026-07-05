@@ -21,6 +21,8 @@ export interface Config {
   setAiredTime: boolean;
   /** Write a Kodi/Emby/Jellyfin .nfo metadata file next to each recording. */
   writeNfo: boolean;
+  /** Run comskip on each recording to generate a .edl commercial-skip file. */
+  comskip: boolean;
 }
 
 export const DEFAULT_CONFIG_FILE = "config.json";
@@ -123,5 +125,6 @@ export function loadConfig(file = DEFAULT_CONFIG_FILE): Config {
     filenameStrip: optionalStringArray(obj, "filenameStrip"),
     setAiredTime: optionalBoolean(obj, "setAiredTime", true),
     writeNfo: optionalBoolean(obj, "writeNfo", true),
+    comskip: optionalBoolean(obj, "comskip", false),
   };
 }

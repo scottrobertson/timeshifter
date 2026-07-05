@@ -51,6 +51,7 @@ If you've cloned the repo, run `cp config.example.json config.json` and edit it.
 | `filenameStrip` | `[]` | Strings to remove from the title when building the filename, e.g. `["ᴸᶦᵛᵉ"]` for a live badge the EPG tacks on. Leftover double spaces are tidied up. Only affects the filename; show lists and the `.nfo` keep the original title. Note that changing it changes the filenames, so watch mode may re-download shows it already has under the old name. |
 | `setAiredTime` | `true` | Set the file's modified time to when the show aired, so it sorts by air date in a media library. Set to `false` to keep the download time. |
 | `writeNfo` | `true` | Write a `.nfo` metadata file next to each recording (title, description, air date, runtime, and season/episode when the guide includes it) so Emby, Jellyfin and Kodi read it instead of guessing from the filename. Set to `false` to skip it. |
+| `comskip` | `false` | Run [comskip](https://github.com/erikkaashoek/Comskip) on each recording to write a `.edl` commercial-skip file next to it. See [Commercial detection](#commercial-detection-edl). |
 | `watch` | — | Watch-mode rules. See [Watch mode](#watch-mode-automatic-downloads). |
 
 ## Interactive mode (pick a show)
@@ -196,6 +197,26 @@ npm start watch
 ```
 
 </details>
+
+## Commercial detection (.edl)
+
+Set `"comskip": true` to run [comskip](https://github.com/erikkaashoek/Comskip) on each recording. It detects the ad breaks and writes a `.edl` file next to the recording (e.g. `NASA TV - Artemis II Launch - 2026-06-01_18-30.edl`), which Plex, Emby, Jellyfin and Kodi read to skip or mark the commercials.
+
+```json
+{
+  "url": "http://my-provider.com:8080",
+  "username": "your-username",
+  "password": "your-password",
+  "downloadDir": "/catchup",
+  "comskip": true
+}
+```
+
+- It runs after the download, so it adds some processing time per recording (comskip reads the whole file).
+- In watch mode it also **backfills**: any recording already in your download dir that's missing a `.edl` gets one on the next poll, then it's left alone.
+- The Docker image bundles comskip, so `"comskip": true` works out of the box. Running with Node instead, install comskip yourself and either put it on your `PATH` or point `COMSKIP_PATH` at the binary.
+- `COMSKIP_PATH` overrides which comskip binary is used, if you want a specific build.
+- Detection runs with comskip's defaults. To tune it, point `COMSKIP_INI` at your own `comskip.ini`; otherwise a minimal built-in one is used that just turns on `.edl` output.
 
 ## Notes / troubleshooting
 
