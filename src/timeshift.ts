@@ -550,6 +550,14 @@ function runComskip(
 export interface EdlResult {
   status: "created" | "exists";
   path: string;
+  /** How many commercial breaks comskip found (one .edl line each). */
+  commercials: number;
+}
+
+/** Count the commercial breaks in an .edl. Comskip writes one line per break. */
+async function countCommercials(edlPath: string): Promise<number> {
+  const contents = await readFile(edlPath, "utf8");
+  return contents.split("\n").filter((line) => line.trim()).length;
 }
 
 /**
@@ -561,7 +569,9 @@ export interface EdlResult {
  */
 export async function ensureEdl(outputPath: string): Promise<EdlResult> {
   const edlPath = edlPathFor(outputPath);
-  if (existsSync(edlPath)) return { status: "exists", path: edlPath };
+  if (existsSync(edlPath)) {
+    return { status: "exists", path: edlPath, commercials: await countCommercials(edlPath) };
+  }
 
   // On a TTY, redraw the percentage in place. Without one (e.g. Docker logs)
   // \r-redraws never flush, so print each 10% on its own line instead.
@@ -594,5 +604,5 @@ export async function ensureEdl(outputPath: string): Promise<EdlResult> {
   if (!existsSync(edlPath)) {
     throw new Error(`comskip produced no .edl${messages ? `: ${messages}` : ""}`);
   }
-  return { status: "created", path: edlPath };
+  return { status: "created", path: edlPath, commercials: await countCommercials(edlPath) };
 }

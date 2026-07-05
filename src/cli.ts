@@ -194,8 +194,8 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
 
   if (config.comskip) {
     try {
-      await ensureEdl(result.outputPath);
-      console.log("  ✓ Generated the .edl (comskip)");
+      const { commercials } = await ensureEdl(result.outputPath);
+      console.log(`  ✓ Generated the .edl (comskip) · ${commercials} ${commercials === 1 ? "ad break" : "ad breaks"} found`);
     } catch (err) {
       console.log(`  ⚠️  comskip failed: ${err instanceof Error ? err.message : String(err)}`);
     }

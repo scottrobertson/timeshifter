@@ -530,6 +530,7 @@ describe("ensureEdl", () => {
 
     assert.equal(result.status, "created");
     assert.equal(result.path, path.join(dir, "Artemis II Launch.edl"));
+    assert.equal(result.commercials, 2); // one per .edl segment line
     assert.ok(await readFile(result.path)); // the .edl exists
     // The .log comskip drops (from the -v we pass for progress) is cleaned up.
     assert.deepEqual((await readdir(dir)).sort(), ["Artemis II Launch.edl", "Artemis II Launch.ts"]);
@@ -544,6 +545,7 @@ describe("ensureEdl", () => {
     const result = await ensureEdl(recording);
 
     assert.equal(result.status, "created");
+    assert.equal(result.commercials, 0);
     assert.equal((await readFile(result.path)).toString(), "");
   });
 
@@ -558,6 +560,7 @@ describe("ensureEdl", () => {
     const result = await ensureEdl(recording);
 
     assert.equal(result.status, "exists");
+    assert.equal(result.commercials, 1); // counted from the existing .edl
     assert.equal((await readFile(result.path)).toString(), "kept");
   });
 

@@ -84,7 +84,8 @@ async function downloadProgram(
     // After the saved line, so the comskip spinner sits under the recording it's for.
     if (comskip) {
       try {
-        await ensureEdl(result.outputPath);
+        const { commercials } = await ensureEdl(result.outputPath);
+        console.log(`  ✓ comskip · ${commercials} ${commercials === 1 ? "ad break" : "ad breaks"} found`);
       } catch {
         // Non-fatal: the recording is fine, only the .edl didn't get generated.
       }
@@ -195,7 +196,8 @@ export async function pollOnce(
             try {
               // Backfill: generate the .edl for a recording we already have but
               // that's missing one. It only runs comskip once, then no-ops.
-              await ensureEdl(outputPath);
+              const { commercials } = await ensureEdl(outputPath);
+              console.log(`  ✓ comskip · ${commercials} ${commercials === 1 ? "ad break" : "ad breaks"} found`);
             } catch {
               // Non-fatal: leave the recording as-is, try again next poll.
             }

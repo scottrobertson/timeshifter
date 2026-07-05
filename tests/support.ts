@@ -42,7 +42,7 @@ export async function installFakeFfmpeg(kind: "copy" | "fail"): Promise<() => vo
 // exits non-zero, like a genuine error.
 const COMSKIP_EDL_SCRIPT = `#!/bin/sh
 for arg in "$@"; do input="$arg"; done
-: > "\${input%.*}.edl"
+printf '0.00\\t30.00\\t0\\n120.00\\t150.00\\t0\\n' > "\${input%.*}.edl"
 : > "\${input%.*}.log"
 `;
 
