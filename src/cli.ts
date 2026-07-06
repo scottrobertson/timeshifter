@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { search, confirm, select, number, input } from "@inquirer/prompts";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
@@ -107,6 +109,8 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
 
   let before = config.paddingBefore;
   let after = config.paddingAfter;
+  let writeNfo = config.writeNfo;
+  let comskip = config.comskip;
   let window = recordingWindow(program, before, after);
 
   const printPlan = (): void => {
@@ -125,6 +129,8 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
     console.log(`  End:      ${window.endLocal.slice(0, 16)}${tz}`);
     console.log(`  Length:   ${window.minutes} min`);
     console.log(`  Saving:   ${config.downloadDir}/${filename}`);
+    console.log(`  .nfo:     ${writeNfo ? "write" : "skip"}`);
+    console.log(`  comskip:  ${comskip ? "run" : "skip"}`);
     console.log("");
   };
 
@@ -139,6 +145,14 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
         { name: "Download", value: "download" },
         { name: "Adjust padding", value: "adjust" },
         { name: "Edit filename", value: "filename" },
+        {
+          name: `Write .nfo:  ${writeNfo ? "on" : "off"}  (select to turn ${writeNfo ? "off" : "on"})`,
+          value: "toggle-nfo",
+        },
+        {
+          name: `Run comskip: ${comskip ? "on" : "off"}  (select to turn ${comskip ? "off" : "on"})`,
+          value: "toggle-comskip",
+        },
         { name: "Cancel", value: "cancel" },
       ],
     });
@@ -146,7 +160,18 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
       console.log("Skipped.");
       return;
     }
-    if (action === "download") break;
+    if (action === "download") {
+      const outputPath = path.join(config.downloadDir, filename);
+      if (existsSync(outputPath)) {
+        const overwrite = await confirm({
+          message: `${filename} already exists. Overwrite it?`,
+          default: false,
+        });
+        // Back to the menu so you can edit the filename instead of overwriting.
+        if (!overwrite) continue;
+      }
+      break;
+    }
 
     if (action === "filename") {
       filename = (
@@ -157,6 +182,18 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
           validate: (v) => v.trim().length > 0 || "Enter a filename.",
         })
       ).trim();
+      printPlan();
+      continue;
+    }
+
+    if (action === "toggle-nfo") {
+      writeNfo = !writeNfo;
+      printPlan();
+      continue;
+    }
+
+    if (action === "toggle-comskip") {
+      comskip = !comskip;
       printPlan();
       continue;
     }
@@ -183,7 +220,7 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
     }
   }
 
-  if (config.writeNfo) {
+  if (writeNfo) {
     try {
       await syncNfo(program, result.outputPath, new Date());
       console.log("  ✓ Wrote .nfo metadata");
@@ -192,7 +229,7 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
     }
   }
 
-  if (config.comskip) {
+  if (comskip) {
     try {
       const { commercials } = await ensureEdl(result.outputPath);
       console.log(`  ✓ Generated the .edl (comskip) · ${commercials} ${commercials === 1 ? "ad break" : "ad breaks"} found`);

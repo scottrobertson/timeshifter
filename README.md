@@ -50,8 +50,8 @@ If you've cloned the repo, run `cp config.example.json config.json` and edit it.
 | `filenameTemplate` | `{channel} - {title} - {datetime}.{ext}` | How files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{year}`, `{month}`, `{day}` (month and day zero-padded), `{ext}`. Supports subfolders, e.g. `{channel}/{title} - {date}.{ext}`. |
 | `filenameStrip` | `[]` | Strings to remove from the title when building the filename, e.g. `["ᴸᶦᵛᵉ"]` for a live badge the EPG tacks on. Leftover double spaces are tidied up. Only affects the filename; show lists and the `.nfo` keep the original title. Note that changing it changes the filenames, so watch mode may re-download shows it already has under the old name. |
 | `setAiredTime` | `true` | Set the file's modified time to when the show aired, so it sorts by air date in a media library. Set to `false` to keep the download time. |
-| `writeNfo` | `true` | Write a `.nfo` metadata file next to each recording (title, description, air date, runtime, and season/episode when the guide includes it) so Emby, Jellyfin and Kodi read it instead of guessing from the filename. Set to `false` to skip it. |
-| `comskip` | `false` | Run [comskip](https://github.com/erikkaashoek/Comskip) on each recording to write a `.edl` commercial-skip file next to it. See [Commercial detection](#commercial-detection-edl). |
+| `writeNfo` | `true` | Write a `.nfo` metadata file next to each recording (title, description, air date, runtime, and season/episode when the guide includes it) so Emby, Jellyfin and Kodi read it instead of guessing from the filename. Set to `false` to skip it. You can also flip this per-download at the confirm prompt. |
+| `comskip` | `false` | Run [comskip](https://github.com/erikkaashoek/Comskip) on each recording to write a `.edl` commercial-skip file next to it. You can also flip this per-download at the confirm prompt. See [Commercial detection](#commercial-detection-edl). |
 | `watch` | — | Watch-mode rules. See [Watch mode](#watch-mode-automatic-downloads). |
 
 ## Interactive mode (pick a show)
@@ -215,7 +215,7 @@ Set `"comskip": true` to run [comskip](https://github.com/erikkaashoek/Comskip) 
 
 - It runs after the download, so it adds some processing time per recording (comskip reads the whole file).
 - In watch mode it also **backfills**: any recording already in your download dir that's missing a `.edl` gets one on the next poll, then it's left alone.
-- This is the global default. Each subscription can override it with its own `comskip` (see [Watch mode](#watch-mode-automatic-downloads)), so you can leave it on for most and turn it off on the odd one, or the other way around.
+- This is the global default. Each subscription can override it with its own `comskip` (see [Watch mode](#watch-mode-automatic-downloads)), so you can leave it on for most and turn it off on the odd one, or the other way around. In interactive mode you can also flip it on or off per download at the confirm prompt.
 - The Docker image bundles comskip, so `"comskip": true` works out of the box. Running with Node instead, install comskip yourself and either put it on your `PATH` or point `COMSKIP_PATH` at the binary.
 - `COMSKIP_PATH` overrides which comskip binary is used, if you want a specific build.
 - Detection runs with comskip's defaults. To tune it, point `COMSKIP_INI` at your own `comskip.ini`; otherwise a minimal built-in one is used that just turns on `.edl` output.
@@ -230,7 +230,7 @@ Set `"comskip": true` to run [comskip](https://github.com/erikkaashoek/Comskip) 
   - You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`.
   - Set `filenameStrip` (globally or per subscription) to remove junk the EPG adds to titles, e.g. `["ᴸᶦᵛᵉ"]`. It only affects the filename.
 - **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `"setAiredTime": false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
-- **.nfo metadata:** a `.nfo` file is written next to each recording with the title, description, air date and runtime, so Emby, Jellyfin and Kodi use that instead of guessing from the filename. When the guide prefixes the description with a season/episode marker (e.g. `S21 E8`), that's pulled out into proper season and episode fields. In watch mode it's also created or refreshed for recordings you already have. Set `"writeNfo": false` to turn it off.
+- **.nfo metadata:** a `.nfo` file is written next to each recording with the title, description, air date and runtime, so Emby, Jellyfin and Kodi use that instead of guessing from the filename. When the guide prefixes the description with a season/episode marker (e.g. `S21 E8`), that's pulled out into proper season and episode fields. In watch mode it's also created or refreshed for recordings you already have. Set `"writeNfo": false` to turn it off. In interactive mode you can also flip it on or off per download at the confirm prompt.
 - **Timezone:** set the `TZ` environment variable (e.g. `Europe/London`) to control the timezone of the watch-mode log timestamps; it defaults to UTC. The Docker image bundles the zone data. Guide and recording times are unaffected; they always use the provider's own local time, which is what the endpoint expects, so no timezone conversion happens.
 
 ## Built with Claude
