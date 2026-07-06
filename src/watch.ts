@@ -84,8 +84,12 @@ async function downloadProgram(
     // After the saved line, so the comskip spinner sits under the recording it's for.
     if (comskip) {
       try {
-        const { commercials } = await ensureEdl(result.outputPath);
-        console.log(`  ✓ comskip · ${commercials} ${commercials === 1 ? "ad break" : "ad breaks"} found`);
+        const edl = await ensureEdl(result.outputPath);
+        // Only report when comskip actually ran. An existing .edl is a no-op, so
+        // printing it would put a comskip line under every recording we already have.
+        if (edl.status === "created") {
+          console.log(`  ✓ comskip · ${edl.commercials} ${edl.commercials === 1 ? "ad break" : "ad breaks"} found`);
+        }
       } catch {
         // Non-fatal: the recording is fine, only the .edl didn't get generated.
       }
@@ -196,8 +200,12 @@ export async function pollOnce(
             try {
               // Backfill: generate the .edl for a recording we already have but
               // that's missing one. It only runs comskip once, then no-ops.
-              const { commercials } = await ensureEdl(outputPath);
-              console.log(`  ✓ comskip · ${commercials} ${commercials === 1 ? "ad break" : "ad breaks"} found`);
+              const edl = await ensureEdl(outputPath);
+              // Only report when comskip actually ran, so recordings that already
+              // have their .edl stay as a single line.
+              if (edl.status === "created") {
+                console.log(`  ✓ comskip · ${edl.commercials} ${edl.commercials === 1 ? "ad break" : "ad breaks"} found`);
+              }
             } catch {
               // Non-fatal: leave the recording as-is, try again next poll.
             }
