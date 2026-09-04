@@ -4,3 +4,5 @@ downloads/
 *.log
 .DS_Store
 config.json
+scheduled.json
+scheduled.json.tmp

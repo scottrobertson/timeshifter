@@ -109,14 +109,28 @@ describe("loadWatchConfig", () => {
     assert.throws(() => loadWatchConfig(file), /isn't valid JSON/);
   });
 
-  it("throws when the watch block is missing", async () => {
+  // Watch mode also picks up one-off scheduled recordings, which live outside
+  // config.json, so having no subscriptions is a normal way to run it.
+  it("gives no subscriptions when the watch block is missing", async () => {
     const file = await writeTemp(JSON.stringify({ url: "http://example.com" }));
-    assert.throws(() => loadWatchConfig(file), /needs a "watch" object/);
+    assert.deepEqual(loadWatchConfig(file).subscriptions, []);
   });
 
-  it("throws when subscriptions is empty", async () => {
+  it("gives no subscriptions when the list is empty", async () => {
     const file = await writeTemp({ subscriptions: [] });
-    assert.throws(() => loadWatchConfig(file), /non-empty "watch.subscriptions"/);
+    assert.deepEqual(loadWatchConfig(file).subscriptions, []);
+  });
+
+  it("still applies the poll defaults with no subscriptions", async () => {
+    const file = await writeTemp(JSON.stringify({ url: "http://example.com" }));
+    const watch = loadWatchConfig(file);
+    assert.equal(watch.pollIntervalMinutes, 10);
+    assert.equal(watch.readyGraceMinutes, 0);
+  });
+
+  it("throws when subscriptions isn't an array", async () => {
+    const file = await writeTemp({ subscriptions: "NASA TV" });
+    assert.throws(() => loadWatchConfig(file), /"watch.subscriptions" that must be an array/);
   });
 
   it("throws when titleContains is empty", async () => {

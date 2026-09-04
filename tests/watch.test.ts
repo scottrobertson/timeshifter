@@ -4,10 +4,22 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { isDue, pollOnce, type SubscriptionPollResult } from "../src/watch.js";
+import {
+  isDue,
+  pollOnce,
+  type PollResult,
+  type ScheduledPollResult,
+  type SubscriptionPollResult,
+} from "../src/watch.js";
 import type { Config } from "../src/config.js";
 import type { Channel, EpgProgram, Source } from "../src/source.js";
 import type { Subscription, WatchConfig } from "../src/subscriptions.js";
+import {
+  loadSchedule,
+  saveSchedule,
+  snapshotOf,
+  type ScheduledRecording,
+} from "../src/scheduled.js";
 import { installFakeComskip, installFakeFfmpeg } from "./support.js";
 
 function makeProgram(overrides: Partial<EpgProgram> = {}): EpgProgram {
@@ -132,18 +144,44 @@ describe("pollOnce", () => {
       })) as unknown as typeof globalThis.fetch;
   }
 
-  function summary(overrides: Partial<SubscriptionPollResult> = {}): SubscriptionPollResult[] {
-    return [
-      {
-        subscription: "Moon launches",
-        ready: 0,
-        listed: 0,
-        downloaded: 0,
-        failed: 0,
-        alreadyHad: 0,
-        ...overrides,
-      },
-    ];
+  // Each poll gets its own schedule file inside the test's temp dir, so a real
+  // scheduled.json in the working directory can't leak into the tests.
+  function scheduleIn(dir: string): string {
+    return path.join(dir, "scheduled.json");
+  }
+
+  function noScheduled(overrides: Partial<ScheduledPollResult> = {}): ScheduledPollResult {
+    return {
+      pending: 0,
+      waiting: 0,
+      moved: 0,
+      listed: 0,
+      downloaded: 0,
+      failed: 0,
+      alreadyHad: 0,
+      expired: 0,
+      ...overrides,
+    };
+  }
+
+  function summary(
+    overrides: Partial<SubscriptionPollResult> = {},
+    scheduled: Partial<ScheduledPollResult> = {},
+  ): PollResult {
+    return {
+      subscriptions: [
+        {
+          subscription: "Moon launches",
+          ready: 0,
+          listed: 0,
+          downloaded: 0,
+          failed: 0,
+          alreadyHad: 0,
+          ...overrides,
+        },
+      ],
+      scheduled: noScheduled(scheduled),
+    };
   }
 
   it("downloads a due program into the download dir", async () => {
@@ -151,7 +189,7 @@ describe("pollOnce", () => {
     serveBytes("launch footage");
     restoreFfmpeg = await installFakeFfmpeg("copy");
 
-    const results = await pollOnce(makeConfig(dir), fakeSource([makeProgram()]), makeWatch(), false, now);
+    const results = await pollOnce(makeConfig(dir), fakeSource([makeProgram()]), makeWatch(), false, now, scheduleIn(dir));
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
     const written = await readFile(path.join(dir, recordingName));
@@ -169,6 +207,7 @@ describe("pollOnce", () => {
       makeWatch(),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
@@ -189,6 +228,7 @@ describe("pollOnce", () => {
       makeWatch({ filenameStrip: ["ᴸᶦᵛᵉ"] }),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
@@ -208,6 +248,7 @@ describe("pollOnce", () => {
       makeWatch(),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
@@ -226,6 +267,7 @@ describe("pollOnce", () => {
       makeWatch({ comskip: false }),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
@@ -244,6 +286,7 @@ describe("pollOnce", () => {
       makeWatch({ comskip: true }),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1, downloaded: 1 }));
@@ -253,7 +296,7 @@ describe("pollOnce", () => {
   it("lists without downloading on a dry run", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
 
-    const results = await pollOnce(makeConfig(dir), fakeSource([makeProgram()]), makeWatch(), true, now);
+    const results = await pollOnce(makeConfig(dir), fakeSource([makeProgram()]), makeWatch(), true, now, scheduleIn(dir));
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1 }));
     assert.equal(existsSync(path.join(dir, recordingName)), false);
@@ -269,6 +312,7 @@ describe("pollOnce", () => {
       makeWatch(),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary({ ready: 1, alreadyHad: 1 }));
@@ -281,7 +325,7 @@ describe("pollOnce", () => {
     globalThis.fetch = (async () =>
       new Response("nope", { status: 404, statusText: "Not Found" })) as unknown as typeof globalThis.fetch;
 
-    const results = await pollOnce(makeConfig(dir), fakeSource([makeProgram()]), makeWatch(), false, now);
+    const results = await pollOnce(makeConfig(dir), fakeSource([makeProgram()]), makeWatch(), false, now, scheduleIn(dir));
 
     assert.deepEqual(results, summary({ ready: 1, listed: 1, failed: 1 }));
     assert.equal(existsSync(path.join(dir, recordingName)), false);
@@ -296,6 +340,7 @@ describe("pollOnce", () => {
       makeWatch({ channel: "ESA TV" }),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary());
@@ -310,6 +355,7 @@ describe("pollOnce", () => {
       makeWatch({ from: "2026-06-08" }),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary());
@@ -325,8 +371,260 @@ describe("pollOnce", () => {
       makeWatch({ paddingAfter: 120 }),
       false,
       now,
+      scheduleIn(dir),
     );
 
     assert.deepEqual(results, summary());
+  });
+
+  describe("scheduled recordings", () => {
+    // No subscriptions, so each test is only about the one-off recording.
+    const watch: WatchConfig = { pollIntervalMinutes: 15, readyGraceMinutes: 0, subscriptions: [] };
+
+    // The same short template the subscription tests use, so the file is easy to name.
+    function config(dir: string, overrides: Partial<Config> = {}): Config {
+      return makeConfig(dir, { filenameTemplate: "{title}.{ext}", ...overrides });
+    }
+
+    function schedule(dir: string, overrides: Partial<ScheduledRecording> = {}): string {
+      const file = scheduleIn(dir);
+      saveSchedule(
+        [
+          {
+            id: "sched1",
+            channel: "NASA TV",
+            program: snapshotOf(makeProgram()),
+            createdAt: "2026-06-01T09:00:00.000Z",
+            status: "pending",
+            ...overrides,
+          },
+        ],
+        file,
+      );
+      return file;
+    }
+
+    /** The same show, moved by the guide. */
+    function moved(minutes: number): EpgProgram {
+      const shift = (iso: string) => new Date(Date.parse(iso) + minutes * 60_000);
+      const local = (hhmm: string) => `2026-06-07 ${hhmm}:00`;
+      return makeProgram({
+        start: shift("2026-06-07T12:00:00.000Z"),
+        end: shift("2026-06-07T13:00:00.000Z"),
+        startLocal: local(minutes === 90 ? "13:30" : "12:00"),
+        endLocal: local(minutes === 90 ? "14:30" : "13:00"),
+      });
+    }
+
+    function only(file: string): ScheduledRecording {
+      const recordings = loadSchedule(file);
+      assert.equal(recordings.length, 1);
+      return recordings[0]!;
+    }
+
+    it("waits while the show still has to finish airing", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+
+      // Half an hour before the show ends, so there's no catchup to fetch yet.
+      const results = await pollOnce(
+        config(dir),
+        fakeSource([makeProgram()]),
+        watch,
+        false,
+        end - 30 * 60_000,
+        file,
+      );
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, waiting: 1 }));
+      assert.equal(existsSync(path.join(dir, recordingName)), false);
+      assert.equal(only(file).status, "pending");
+    });
+
+    it("downloads it once the show has finished, then marks it done", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+      serveBytes("launch footage");
+      restoreFfmpeg = await installFakeFfmpeg("copy");
+
+      const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, false, now, file);
+
+      assert.deepEqual(
+        results.scheduled,
+        noScheduled({ pending: 1, listed: 1, downloaded: 1 }),
+      );
+      const written = await readFile(path.join(dir, recordingName));
+      assert.equal(written.toString(), "launch footage");
+
+      const recording = only(file);
+      assert.equal(recording.status, "done");
+      assert.equal(recording.outputPath, path.join(dir, recordingName));
+      assert.ok(recording.completedAt);
+    });
+
+    it("records the new time when the guide moves the show", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+      serveBytes("launch footage");
+      restoreFfmpeg = await installFakeFfmpeg("copy");
+
+      // The show slipped 90 min, so it now ends at 14:30 and is due after that.
+      const results = await pollOnce(
+        config(dir),
+        fakeSource([moved(90)]),
+        watch,
+        false,
+        end + 3 * 60 * 60_000,
+        file,
+      );
+
+      assert.deepEqual(
+        results.scheduled,
+        noScheduled({ pending: 1, moved: 1, listed: 1, downloaded: 1 }),
+      );
+      const recording = only(file);
+      assert.equal(recording.program.start, "2026-06-07T13:30:00.000Z");
+      assert.equal(recording.program.startLocal, "2026-06-07 13:30:00");
+      assert.equal(recording.status, "done");
+    });
+
+    it("records the time you picked when the guide entry has gone", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+      serveBytes("launch footage");
+      restoreFfmpeg = await installFakeFfmpeg("copy");
+
+      const results = await pollOnce(config(dir), fakeSource([]), watch, false, now, file);
+
+      assert.deepEqual(
+        results.scheduled,
+        noScheduled({ pending: 1, listed: 1, downloaded: 1 }),
+      );
+      assert.equal(existsSync(path.join(dir, recordingName)), true);
+      assert.equal(only(file).status, "done");
+    });
+
+    it("keeps waiting when the guide entry has gone but the show hasn't aired", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+
+      const results = await pollOnce(
+        config(dir),
+        fakeSource([]),
+        watch,
+        false,
+        end - 30 * 60_000,
+        file,
+      );
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, waiting: 1 }));
+      assert.equal(only(file).status, "pending");
+    });
+
+    it("gives up two days after a show that never showed up in the guide", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+
+      const results = await pollOnce(
+        config(dir),
+        fakeSource([]),
+        watch,
+        false,
+        end + 49 * 60 * 60_000,
+        file,
+      );
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, expired: 1 }));
+      assert.equal(existsSync(path.join(dir, recordingName)), false);
+      assert.equal(only(file).status, "expired");
+    });
+
+    it("marks it done when the recording is already there", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+      await writeFile(path.join(dir, recordingName), "an earlier download");
+
+      const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, false, now, file);
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, alreadyHad: 1 }));
+      const recording = only(file);
+      assert.equal(recording.status, "done");
+      assert.equal(recording.outputPath, path.join(dir, recordingName));
+    });
+
+    it("leaves it pending when the download fails, so the next poll tries again", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+      globalThis.fetch = (async () =>
+        new Response("nope", { status: 404, statusText: "Not Found" })) as unknown as typeof globalThis.fetch;
+
+      const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, false, now, file);
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, listed: 1, failed: 1 }));
+      assert.equal(only(file).status, "pending");
+    });
+
+    it("changes nothing on a dry run", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+
+      const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, true, now, file);
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, listed: 1 }));
+      assert.equal(existsSync(path.join(dir, recordingName)), false);
+      assert.equal(only(file).status, "pending");
+    });
+
+    it("uses the recording's own padding over the global", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      // now is end + 60 min, so 120 min of after-padding means it isn't ready.
+      const file = schedule(dir, { paddingAfter: 120 });
+
+      const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, false, now, file);
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, waiting: 1 }));
+    });
+
+    it("leaves a recording that's already been done alone", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir, { status: "done", completedAt: new Date(now).toISOString() });
+
+      const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, false, now, file);
+
+      assert.deepEqual(results.scheduled, noScheduled());
+      assert.equal(existsSync(path.join(dir, recordingName)), false);
+    });
+
+    it("says so when no channel has that name any more", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir, { channel: "ESA TV" });
+
+      const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, false, now, file);
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1 }));
+      assert.equal(only(file).status, "pending");
+    });
+
+    it("runs alongside subscriptions in the same poll", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir);
+      serveBytes("launch footage");
+      restoreFfmpeg = await installFakeFfmpeg("copy");
+
+      const results = await pollOnce(
+        config(dir),
+        fakeSource([makeProgram()]),
+        makeWatch(),
+        false,
+        now,
+        file,
+      );
+
+      // Both want the same file, so whichever runs first downloads it and the
+      // scheduled pass finds it already there.
+      assert.deepEqual(results.subscriptions, summary({ ready: 1, listed: 1, downloaded: 1 }).subscriptions);
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, alreadyHad: 1 }));
+      assert.equal(only(file).status, "done");
+    });
   });
 });

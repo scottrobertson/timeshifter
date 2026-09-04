@@ -12,6 +12,8 @@ import {
   formatStartForUrl,
   nfoPathFor,
   outputFilename,
+  plannedWindow,
+  readyAtLocal,
   recordingWindow,
   setFileTime,
   streamToFile,
@@ -112,6 +114,41 @@ describe("recordingWindow", () => {
     // Without the cap this would be ~100 min; capped at "now" it's about 10.
     const window = recordingWindow(program, 0, 30);
     assert.ok(window.minutes >= 9 && window.minutes <= 12, `got ${window.minutes}`);
+  });
+});
+
+describe("plannedWindow", () => {
+  it("matches recordingWindow for a program that has already finished", () => {
+    assert.deepEqual(plannedWindow(makeProgram(), 2, 5), recordingWindow(makeProgram(), 2, 5));
+  });
+
+  it("covers the whole show for one that hasn't aired yet", () => {
+    const soon = Date.now() + 24 * 60 * 60_000;
+    const program = makeProgram({
+      start: new Date(soon),
+      end: new Date(soon + 60 * 60_000),
+    });
+
+    const window = plannedWindow(program, 5, 30);
+
+    assert.equal(window.minutes, 95);
+    // recordingWindow would cap this at "now" and give a useless one minute window.
+    assert.equal(recordingWindow(program, 5, 30).minutes, 1);
+  });
+});
+
+describe("readyAtLocal", () => {
+  it("is the end time when nothing is added", () => {
+    assert.equal(readyAtLocal(makeProgram(), 0), "2024-03-10 13:00:00");
+  });
+
+  it("adds the minutes onto the end", () => {
+    assert.equal(readyAtLocal(makeProgram(), 45), "2024-03-10 13:45:00");
+  });
+
+  it("rolls over into the next day", () => {
+    const program = makeProgram({ endLocal: "2024-03-10 23:40:00" });
+    assert.equal(readyAtLocal(program, 30), "2024-03-11 00:10:00");
   });
 });
 

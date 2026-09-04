@@ -46,20 +46,50 @@ function shiftLocal(startLocal: string, minutesDelta: number): string {
 }
 
 /**
- * Recording window for a program, with padding in minutes (negative records less).
- * Caps the end at "now" so a still-airing show doesn't ask for footage that
- * doesn't exist yet.
+ * When a program's catchup will be there to download, as a "YYYY-MM-DD HH:MM:SS"
+ * in the provider's own time like the rest of the guide.
+ */
+export function readyAtLocal(program: EpgProgram, minutesAfterEnd: number): string {
+  return shiftLocal(program.endLocal, minutesAfterEnd);
+}
+
+/**
+ * The full window a program would be recorded over, with padding in minutes
+ * (negative records less). Use it to show someone what a recording will cover
+ * before the show has aired, where capping at "now" would give a one minute
+ * window.
+ */
+export function plannedWindow(
+  program: EpgProgram,
+  paddingBefore: number,
+  paddingAfter: number,
+): RecordingWindow {
+  const startMs = program.start.getTime() - paddingBefore * 60_000;
+  const endMs = program.end.getTime() + paddingAfter * 60_000;
+  const minutes = Math.max(1, Math.ceil((endMs - startMs) / 60_000));
+  const startLocal = shiftLocal(program.startLocal, -paddingBefore);
+  return { startLocal, endLocal: shiftLocal(startLocal, minutes), minutes };
+}
+
+/**
+ * The window to actually record, capped at "now" so a still-airing show doesn't
+ * ask for footage that doesn't exist yet.
  */
 export function recordingWindow(
   program: EpgProgram,
   paddingBefore: number,
   paddingAfter: number,
 ): RecordingWindow {
+  const planned = plannedWindow(program, paddingBefore, paddingAfter);
   const startMs = program.start.getTime() - paddingBefore * 60_000;
   const endMs = Math.min(program.end.getTime() + paddingAfter * 60_000, Date.now());
   const minutes = Math.max(1, Math.ceil((endMs - startMs) / 60_000));
-  const startLocal = shiftLocal(program.startLocal, -paddingBefore);
-  return { startLocal, endLocal: shiftLocal(startLocal, minutes), minutes };
+  if (minutes >= planned.minutes) return planned;
+  return {
+    startLocal: planned.startLocal,
+    endLocal: shiftLocal(planned.startLocal, minutes),
+    minutes,
+  };
 }
 
 export function buildTimeshiftUrl(

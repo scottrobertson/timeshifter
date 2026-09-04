@@ -3,14 +3,33 @@ import path from "node:path";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
-import { download, ensureEdl, outputFilename, recordingWindow, setFileTime, syncNfo } from "./timeshift.js";
+import {
+  download,
+  ensureEdl,
+  outputFilename,
+  readyAtLocal,
+  recordingWindow,
+  setFileTime,
+  syncNfo,
+} from "./timeshift.js";
 import {
   channelMatches,
+  channelNameMatches,
   loadWatchConfig,
   titleMatches,
-  type Subscription,
   type WatchConfig,
 } from "./subscriptions.js";
+import {
+  DEFAULT_SCHEDULE_FILE,
+  findProgram,
+  hasMoved,
+  loadSchedule,
+  pruneSchedule,
+  saveSchedule,
+  snapshotOf,
+  toProgram,
+  updateScheduled,
+} from "./scheduled.js";
 
 /**
  * Whether a program should be downloaded now: it's in the archive, it finished
@@ -50,17 +69,22 @@ function status(label: string): string {
   return label.padEnd(9);
 }
 
+interface DownloadOptions {
+  before: number;
+  after: number;
+  writeNfo: boolean;
+  comskip: boolean;
+}
+
 async function downloadProgram(
   config: Config,
   source: Source,
   channel: Channel,
   program: EpgProgram,
-  before: number,
-  after: number,
   filename: string,
   prefix: string,
-  comskip: boolean,
-): Promise<boolean> {
+  { before, after, writeNfo, comskip }: DownloadOptions,
+): Promise<string | undefined> {
   try {
     const window = recordingWindow(program, before, after);
     const url = source.catchupUrl(channel, window);
@@ -72,7 +96,7 @@ async function downloadProgram(
         // Non-fatal: the recording is fine, only its file date didn't get set.
       }
     }
-    if (config.writeNfo) {
+    if (writeNfo) {
       try {
         await syncNfo(program, result.outputPath, new Date());
       } catch {
@@ -94,7 +118,7 @@ async function downloadProgram(
         // Non-fatal: the recording is fine, only the .edl didn't get generated.
       }
     }
-    return true;
+    return result.outputPath;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const when = program.startLocal.slice(0, 16);
@@ -102,7 +126,7 @@ async function downloadProgram(
     console.error(
       `${prefix}${status("✗ failed")} ${when} · ${program.title} · will retry next poll: ${message}`,
     );
-    return false;
+    return undefined;
   }
 }
 
@@ -119,15 +143,50 @@ export interface SubscriptionPollResult {
   alreadyHad: number;
 }
 
+/** What one poll did for the one-off scheduled recordings, all of them together. */
+export interface ScheduledPollResult {
+  /** How many were still waiting to happen when the poll reached them. */
+  pending: number;
+  /** Of those, how many have a show that hasn't finished airing yet. */
+  waiting: number;
+  /** Recordings the guide has since moved to a different time. */
+  moved: number;
+  /** Recordings that were ready to download. */
+  listed: number;
+  downloaded: number;
+  failed: number;
+  /** Skipped because the file already exists. */
+  alreadyHad: number;
+  /** Given up on: the show never showed up in the guide. */
+  expired: number;
+}
+
+export interface PollResult {
+  subscriptions: SubscriptionPollResult[];
+  scheduled: ScheduledPollResult;
+}
+
+/** The label used for scheduled recordings in the log, alongside subscription names. */
+const SCHEDULED_LABEL = "scheduled";
+
+/**
+ * How long after a scheduled show was meant to end we keep trying before giving
+ * up on it. Long enough to ride out a provider outage, short enough that a show
+ * that never aired doesn't get retried forever.
+ */
+const EXPIRE_AFTER_MS = 48 * 60 * 60_000;
+
 export async function pollOnce(
   config: Config,
   source: Source,
   watch: WatchConfig,
   dryRun: boolean,
   now: number = Date.now(),
-): Promise<SubscriptionPollResult[]> {
+  scheduleFile: string = DEFAULT_SCHEDULE_FILE,
+): Promise<PollResult> {
   const channels = await source.archiveChannels();
   const results: SubscriptionPollResult[] = [];
+  const pending = loadSchedule(scheduleFile).filter((r) => r.status === "pending");
 
   // A rule line with the time starts each poll, so they're easy to tell apart
   // as they scroll past in the log.
@@ -135,7 +194,23 @@ export async function pollOnce(
 
   // Pad the subscription names to the longest so the brackets and everything
   // after them line up in a column across subscriptions.
-  const nameWidth = Math.max(0, ...watch.subscriptions.map((s) => s.name.length));
+  const nameWidth = Math.max(
+    0,
+    ...watch.subscriptions.map((s) => s.name.length),
+    ...(pending.length ? [SCHEDULED_LABEL.length] : []),
+  );
+
+  // Two subscriptions on the same channel, or a subscription and a scheduled
+  // recording, would otherwise each ask the provider for the same guide.
+  const guide = new Map<string, EpgProgram[]>();
+  const programsFor = async (channel: Channel): Promise<EpgProgram[]> => {
+    const key = channel.name;
+    const cached = guide.get(key);
+    if (cached) return cached;
+    const programs = await source.programs(channel);
+    guide.set(key, programs);
+    return programs;
+  };
 
   for (const sub of watch.subscriptions) {
     const result: SubscriptionPollResult = {
@@ -164,7 +239,7 @@ export async function pollOnce(
     const cutoff = sub.from ? Date.parse(sub.from) : Number.NEGATIVE_INFINITY;
 
     for (const channel of matching) {
-      const programs = await source.programs(channel);
+      const programs = await programsFor(channel);
       for (const program of programs) {
         if (!titleMatches(sub, program.title)) continue;
         if (!isDue(program, after, watch.readyGraceMinutes, cutoff, now)) continue;
@@ -217,7 +292,13 @@ export async function pollOnce(
         console.log(`${prefix}${status(label)} ${when} · ${program.title}`);
         result.listed++;
         if (dryRun) continue;
-        if (await downloadProgram(config, source, channel, program, before, after, filename, prefix, comskip)) {
+        const saved = await downloadProgram(config, source, channel, program, filename, prefix, {
+          before,
+          after,
+          writeNfo: config.writeNfo,
+          comskip,
+        });
+        if (saved) {
           result.downloaded++;
         } else {
           result.failed++;
@@ -227,10 +308,162 @@ export async function pollOnce(
 
   }
 
-  // One summary for the whole poll, under the separator and any activity.
-  console.log(`\n${pollSummaryLine(results, watch.subscriptions.length, dryRun)}`);
+  const scheduled = await pollScheduled(
+    config,
+    source,
+    watch,
+    dryRun,
+    now,
+    scheduleFile,
+    channels,
+    programsFor,
+    `[${SCHEDULED_LABEL.padEnd(nameWidth)}] `,
+  );
 
-  return results;
+  const poll: PollResult = { subscriptions: results, scheduled };
+
+  // One summary for the whole poll, under the separator and any activity.
+  console.log(`\n${pollSummaryLine(poll, watch.subscriptions.length, dryRun)}`);
+
+  return poll;
+}
+
+/**
+ * Work through the one-off recordings someone picked out of the guide before they
+ * aired. Each one is re-found in the current guide by title, downloaded once the
+ * show has finished, then marked done so it never runs again.
+ */
+async function pollScheduled(
+  config: Config,
+  source: Source,
+  watch: WatchConfig,
+  dryRun: boolean,
+  now: number,
+  scheduleFile: string,
+  channels: Channel[],
+  programsFor: (channel: Channel) => Promise<EpgProgram[]>,
+  prefix: string,
+): Promise<ScheduledPollResult> {
+  // Re-read rather than reuse what the poll started with, so anything scheduled
+  // while a long download was running still gets seen this time round.
+  const pending = loadSchedule(scheduleFile).filter((r) => r.status === "pending");
+
+  const result: ScheduledPollResult = {
+    pending: pending.length,
+    waiting: 0,
+    moved: 0,
+    listed: 0,
+    downloaded: 0,
+    failed: 0,
+    alreadyHad: 0,
+    expired: 0,
+  };
+
+  if (pending.length === 0) return result;
+
+  for (const recording of pending) {
+    const channel = channels.find((c) => channelNameMatches(recording.channel, c));
+    if (!channel) {
+      console.log(`${prefix}${status("no match")} no channel matches "${recording.channel}"`);
+      continue;
+    }
+
+    const before = recording.paddingBefore ?? config.paddingBefore;
+    const after = recording.paddingAfter ?? config.paddingAfter;
+    const writeNfo = recording.writeNfo ?? config.writeNfo;
+    const comskip = recording.comskip ?? config.comskip;
+
+    const match = findProgram(recording, await programsFor(channel));
+    if (match && hasMoved(recording, match)) {
+      const from = recording.program.startLocal.slice(0, 16);
+      const to = match.startLocal.slice(0, 16);
+      console.log(`${prefix}${status("moved")} ${match.title} · ${from} → ${to}`);
+      result.moved++;
+      if (!dryRun) {
+        updateScheduled(recording.id, { program: snapshotOf(match) }, scheduleFile);
+      }
+    }
+
+    // Fall back to the times that were scheduled, so a listing the panel has
+    // dropped from the guide still gets recorded.
+    const program = match ?? toProgram(recording);
+    const when = program.startLocal.slice(0, 16);
+
+    if (!isDue(program, after, watch.readyGraceMinutes, Number.NEGATIVE_INFINITY, now)) {
+      const ready = readyAtLocal(program, after + watch.readyGraceMinutes).slice(0, 16);
+      console.log(`${prefix}${status("waiting")} ${when} · ${program.title} · ready ${ready}`);
+      result.waiting++;
+      continue;
+    }
+
+    if (!match) {
+      if (now > Date.parse(recording.program.end) + EXPIRE_AFTER_MS) {
+        console.log(`${prefix}${status("expired")} ${when} · ${program.title} · never showed up in the guide`);
+        result.expired++;
+        if (!dryRun) {
+          updateScheduled(
+            recording.id,
+            { status: "expired", completedAt: new Date().toISOString() },
+            scheduleFile,
+          );
+        }
+        continue;
+      }
+      console.log(`${prefix}${status("gone")} ${when} · ${program.title} · not in the guide, using the time you picked`);
+    }
+
+    const filename = outputFilename(
+      config,
+      channel,
+      program,
+      recording.filenameTemplate,
+      recording.filenameStrip,
+    );
+    const outputPath = path.join(config.downloadDir, filename);
+
+    if (existsSync(outputPath)) {
+      result.alreadyHad++;
+      console.log(`${prefix}${status("have")} ${when} · ${program.title}`);
+      if (!dryRun) {
+        updateScheduled(
+          recording.id,
+          { status: "done", completedAt: new Date().toISOString(), outputPath },
+          scheduleFile,
+        );
+      }
+      continue;
+    }
+
+    console.log(`${prefix}${status(dryRun ? "would get" : "download")} ${when} · ${program.title}`);
+    result.listed++;
+    if (dryRun) continue;
+
+    const saved = await downloadProgram(config, source, channel, program, filename, prefix, {
+      before,
+      after,
+      writeNfo,
+      comskip,
+    });
+    if (saved) {
+      result.downloaded++;
+      updateScheduled(
+        recording.id,
+        { status: "done", completedAt: new Date().toISOString(), outputPath: saved },
+        scheduleFile,
+      );
+    } else {
+      // Left pending on purpose, so the next poll tries again.
+      result.failed++;
+    }
+  }
+
+  if (!dryRun) {
+    const all = loadSchedule(scheduleFile);
+    const kept = pruneSchedule(all, now);
+    if (kept.length !== all.length) saveSchedule(kept, scheduleFile);
+  }
+
+  return result;
 }
 
 // A full-width rule carrying the poll time, e.g. "── 2026-06-28 16:03:21 ──…".
@@ -239,22 +472,24 @@ function pollSeparator(now: number): string {
   return label + "─".repeat(Math.max(0, 60 - label.length));
 }
 
-function pollSummaryLine(
-  results: SubscriptionPollResult[],
-  subscriptions: number,
-  dryRun: boolean,
-): string {
-  const total = results.reduce(
+function pollSummaryLine(poll: PollResult, subscriptions: number, dryRun: boolean): string {
+  const total = poll.subscriptions.reduce(
     (acc, r) => ({
       listed: acc.listed + r.listed,
       downloaded: acc.downloaded + r.downloaded,
       failed: acc.failed + r.failed,
       alreadyHad: acc.alreadyHad + r.alreadyHad,
     }),
-    { listed: 0, downloaded: 0, failed: 0, alreadyHad: 0 },
+    {
+      listed: poll.scheduled.listed,
+      downloaded: poll.scheduled.downloaded,
+      failed: poll.scheduled.failed,
+      alreadyHad: poll.scheduled.alreadyHad,
+    },
   );
 
   const parts = [`${subscriptions} sub${subscriptions === 1 ? "" : "s"}`];
+  if (poll.scheduled.pending) parts.push(`${poll.scheduled.pending} scheduled`);
   if (dryRun) {
     parts.push(total.listed ? `${total.listed} would download` : "nothing new");
   } else if (total.downloaded || total.failed) {
@@ -264,6 +499,7 @@ function pollSummaryLine(
     parts.push("nothing new");
   }
   if (total.alreadyHad) parts.push(`${total.alreadyHad} already had`);
+  if (poll.scheduled.expired) parts.push(`${poll.scheduled.expired} expired`);
   return parts.join(" · ");
 }
 
@@ -273,10 +509,18 @@ export async function runWatch(config: Config, dryRun = false): Promise<void> {
 
   // Loaded fresh each loop so edits to the file are picked up without a restart.
   let watch = loadWatchConfig();
+  const scheduled = loadSchedule().filter((r) => r.status === "pending").length;
   console.log(
-    `${dryRun ? "Dry run: watching" : "Watching"} ${watch.subscriptions.length} subscription(s), ` +
+    `${dryRun ? "Dry run: watching" : "Watching"} ${watch.subscriptions.length} subscription(s) ` +
+      `and ${scheduled} scheduled recording(s), ` +
       `polling every ${watch.pollIntervalMinutes} min.${dryRun ? " Nothing will be downloaded." : ""}`,
   );
+  if (watch.subscriptions.length === 0 && scheduled === 0) {
+    // Keep polling anyway: a recording can be scheduled while this is running.
+    console.log(
+      `Nothing to watch yet. Add subscriptions to config.json, or schedule an upcoming show with "timeshifter".`,
+    );
+  }
 
   for (;;) {
     try {
