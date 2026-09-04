@@ -7,8 +7,6 @@ import path from "node:path";
 import type { EpgProgram } from "../src/source.js";
 import {
   addScheduled,
-  findProgram,
-  hasMoved,
   loadSchedule,
   newRecording,
   pruneSchedule,
@@ -49,13 +47,6 @@ function makeProgram(overrides: Partial<EpgProgram> = {}): EpgProgram {
     hasArchive: false,
     ...overrides,
   };
-}
-
-/** A program shifted by some minutes from the scheduled slot. */
-function shifted(minutes: number, overrides: Partial<EpgProgram> = {}): EpgProgram {
-  const start = new Date(Date.parse("2026-06-07T12:00:00.000Z") + minutes * 60_000);
-  const end = new Date(Date.parse("2026-06-07T13:00:00.000Z") + minutes * 60_000);
-  return makeProgram({ start, end, ...overrides });
 }
 
 async function tempFile(): Promise<string> {
@@ -185,62 +176,6 @@ describe("snapshotOf and toProgram", () => {
 
   it("says the archive is there, because it's only used once the show has aired", () => {
     assert.equal(toProgram(makeRecording()).hasArchive, true);
-  });
-});
-
-describe("findProgram", () => {
-  const recording = makeRecording();
-
-  it("finds the show at the time it was scheduled for", () => {
-    const found = findProgram(recording, [shifted(0)]);
-    assert.equal(found?.start.toISOString(), "2026-06-07T12:00:00.000Z");
-  });
-
-  it("ignores case and stray spaces in the title", () => {
-    const found = findProgram(recording, [shifted(0, { title: "  artemis II LAUNCH " })]);
-    assert.ok(found);
-  });
-
-  it("still finds a show the guide has moved by 90 minutes", () => {
-    const found = findProgram(recording, [shifted(90)]);
-    assert.equal(found?.start.toISOString(), "2026-06-07T13:30:00.000Z");
-  });
-
-  it("finds one moved earlier as well as later", () => {
-    const found = findProgram(recording, [shifted(-90)]);
-    assert.equal(found?.start.toISOString(), "2026-06-07T10:30:00.000Z");
-  });
-
-  it("ignores a repeat five hours later", () => {
-    assert.equal(findProgram(recording, [shifted(300)]), undefined);
-  });
-
-  it("takes the showing closest to the slot that was picked", () => {
-    const found = findProgram(recording, [shifted(150), shifted(20), shifted(-100)]);
-    assert.equal(found?.start.toISOString(), "2026-06-07T12:20:00.000Z");
-  });
-
-  it("ignores a different show in the same slot", () => {
-    assert.equal(findProgram(recording, [shifted(0, { title: "Mission Briefing" })]), undefined);
-  });
-
-  it("gives nothing for an empty guide", () => {
-    assert.equal(findProgram(recording, []), undefined);
-  });
-});
-
-describe("hasMoved", () => {
-  it("is false when the guide still agrees", () => {
-    assert.equal(hasMoved(makeRecording(), shifted(0)), false);
-  });
-
-  it("is true when the start changed", () => {
-    assert.equal(hasMoved(makeRecording(), shifted(45)), true);
-  });
-
-  it("is true when only the end changed, so an overrun is spotted", () => {
-    const longer = makeProgram({ end: new Date("2026-06-07T14:00:00.000Z") });
-    assert.equal(hasMoved(makeRecording(), longer), true);
   });
 });
 

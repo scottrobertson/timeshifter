@@ -2,17 +2,15 @@ import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 
 import { randomUUID } from "node:crypto";
 import type { EpgProgram } from "./source.js";
 
-// One-off recordings you picked out of the guide before they aired. Watch mode
-// downloads each one once it has finished airing, then marks it done.
+// One-off recordings you picked out of the guide before they aired. Each one is
+// a timer: watch mode records the time slot that was picked, once that slot has
+// passed, then marks it done.
 //
 // These live in their own file rather than in config.json because config.json is
 // mounted read-only in the Docker setups, and because a generated list doesn't
 // belong in a file you hand-edit.
 
 export const DEFAULT_SCHEDULE_FILE = "scheduled.json";
-
-/** How far the guide can move a show and still be recognised as the same one. */
-export const MATCH_WINDOW_MS = 3 * 60 * 60_000;
 
 /** How long a finished recording stays in the file before it's tidied away. */
 const KEEP_FINISHED_DAYS = 30;
@@ -268,32 +266,6 @@ export function snapshotOf(program: EpgProgram): ProgramSnapshot {
     startLocal: program.startLocal,
     endLocal: program.endLocal,
   };
-}
-
-/**
- * Find the scheduled show in a channel's current guide. Guide times move, so it
- * matches on the title and takes the showing closest to the slot you picked. A
- * genuine repeat later in the day is far enough away to be ignored.
- */
-export function findProgram(
-  recording: ScheduledRecording,
-  programs: EpgProgram[],
-): EpgProgram | undefined {
-  const wanted = recording.program.title.trim().toLowerCase();
-  const scheduledStart = Date.parse(recording.program.start);
-  const drift = (p: EpgProgram) => Math.abs(p.start.getTime() - scheduledStart);
-
-  return programs
-    .filter((p) => p.title.trim().toLowerCase() === wanted && drift(p) <= MATCH_WINDOW_MS)
-    .sort((a, b) => drift(a) - drift(b))[0];
-}
-
-/** Whether the guide has moved the show away from the times we stored. */
-export function hasMoved(recording: ScheduledRecording, program: EpgProgram): boolean {
-  return (
-    program.start.toISOString() !== recording.program.start ||
-    program.end.toISOString() !== recording.program.end
-  );
 }
 
 /** Drop finished recordings once they're old enough that nobody's looking at them. */

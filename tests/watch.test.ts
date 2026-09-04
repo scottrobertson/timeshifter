@@ -154,7 +154,6 @@ describe("pollOnce", () => {
     return {
       pending: 0,
       waiting: 0,
-      moved: 0,
       listed: 0,
       downloaded: 0,
       failed: 0,
@@ -404,18 +403,6 @@ describe("pollOnce", () => {
       return file;
     }
 
-    /** The same show, moved by the guide. */
-    function moved(minutes: number): EpgProgram {
-      const shift = (iso: string) => new Date(Date.parse(iso) + minutes * 60_000);
-      const local = (hhmm: string) => `2026-06-07 ${hhmm}:00`;
-      return makeProgram({
-        start: shift("2026-06-07T12:00:00.000Z"),
-        end: shift("2026-06-07T13:00:00.000Z"),
-        startLocal: local(minutes === 90 ? "13:30" : "12:00"),
-        endLocal: local(minutes === 90 ? "14:30" : "13:00"),
-      });
-    }
-
     function only(file: string): ScheduledRecording {
       const recordings = loadSchedule(file);
       assert.equal(recordings.length, 1);
@@ -462,38 +449,14 @@ describe("pollOnce", () => {
       assert.ok(recording.completedAt);
     });
 
-    it("records the new time when the guide moves the show", async () => {
+    it("records the slot that was picked, whatever the guide says now", async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
       const file = schedule(dir);
       serveBytes("launch footage");
       restoreFfmpeg = await installFakeFfmpeg("copy");
 
-      // The show slipped 90 min, so it now ends at 14:30 and is due after that.
-      const results = await pollOnce(
-        config(dir),
-        fakeSource([moved(90)]),
-        watch,
-        false,
-        end + 3 * 60 * 60_000,
-        file,
-      );
-
-      assert.deepEqual(
-        results.scheduled,
-        noScheduled({ pending: 1, moved: 1, listed: 1, downloaded: 1 }),
-      );
-      const recording = only(file);
-      assert.equal(recording.program.start, "2026-06-07T13:30:00.000Z");
-      assert.equal(recording.program.startLocal, "2026-06-07 13:30:00");
-      assert.equal(recording.status, "done");
-    });
-
-    it("records the time you picked when the guide entry has gone", async () => {
-      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
-      const file = schedule(dir);
-      serveBytes("launch footage");
-      restoreFfmpeg = await installFakeFfmpeg("copy");
-
+      // An empty guide is the harshest version: the listing is gone entirely and
+      // the recording still happens off the stored times.
       const results = await pollOnce(config(dir), fakeSource([]), watch, false, now, file);
 
       assert.deepEqual(
@@ -501,27 +464,33 @@ describe("pollOnce", () => {
         noScheduled({ pending: 1, listed: 1, downloaded: 1 }),
       );
       assert.equal(existsSync(path.join(dir, recordingName)), true);
-      assert.equal(only(file).status, "done");
+      const recording = only(file);
+      assert.equal(recording.program.start, "2026-06-07T12:00:00.000Z");
+      assert.equal(recording.status, "done");
     });
 
-    it("keeps waiting when the guide entry has gone but the show hasn't aired", async () => {
+    it("keeps the stored times even when the guide has moved the show", async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
       const file = schedule(dir);
+      serveBytes("launch footage");
+      restoreFfmpeg = await installFakeFfmpeg("copy");
 
-      const results = await pollOnce(
-        config(dir),
-        fakeSource([]),
-        watch,
-        false,
-        end - 30 * 60_000,
-        file,
+      const slipped = makeProgram({
+        start: new Date(Date.UTC(2026, 5, 7, 13, 30, 0)),
+        end: new Date(Date.UTC(2026, 5, 7, 14, 30, 0)),
+        startLocal: "2026-06-07 13:30:00",
+        endLocal: "2026-06-07 14:30:00",
+      });
+      const results = await pollOnce(config(dir), fakeSource([slipped]), watch, false, now, file);
+
+      assert.deepEqual(
+        results.scheduled,
+        noScheduled({ pending: 1, listed: 1, downloaded: 1 }),
       );
-
-      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, waiting: 1 }));
-      assert.equal(only(file).status, "pending");
+      assert.equal(only(file).program.start, "2026-06-07T12:00:00.000Z");
     });
 
-    it("gives up two days after a show that never showed up in the guide", async () => {
+    it("gives up two days after the slot it was meant to record", async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
       const file = schedule(dir);
 

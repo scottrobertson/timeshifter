@@ -21,12 +21,9 @@ import {
 } from "./subscriptions.js";
 import {
   DEFAULT_SCHEDULE_FILE,
-  findProgram,
-  hasMoved,
   loadSchedule,
   pruneSchedule,
   saveSchedule,
-  snapshotOf,
   toProgram,
   updateScheduled,
 } from "./scheduled.js";
@@ -147,17 +144,15 @@ export interface SubscriptionPollResult {
 export interface ScheduledPollResult {
   /** How many were still waiting to happen when the poll reached them. */
   pending: number;
-  /** Of those, how many have a show that hasn't finished airing yet. */
+  /** Of those, how many have a slot that hasn't passed yet. */
   waiting: number;
-  /** Recordings the guide has since moved to a different time. */
-  moved: number;
   /** Recordings that were ready to download. */
   listed: number;
   downloaded: number;
   failed: number;
   /** Skipped because the file already exists. */
   alreadyHad: number;
-  /** Given up on: the show never showed up in the guide. */
+  /** Given up on after 48 hours of the download not working. */
   expired: number;
 }
 
@@ -316,7 +311,6 @@ export async function pollOnce(
     now,
     scheduleFile,
     channels,
-    programsFor,
     `[${SCHEDULED_LABEL.padEnd(nameWidth)}] `,
   );
 
@@ -330,8 +324,9 @@ export async function pollOnce(
 
 /**
  * Work through the one-off recordings someone picked out of the guide before they
- * aired. Each one is re-found in the current guide by title, downloaded once the
- * show has finished, then marked done so it never runs again.
+ * aired. Each one records the time slot that was picked, once that slot has
+ * passed, then is marked done so it never runs again. The guide isn't consulted:
+ * a scheduled recording is a timer, and the times are already in the file.
  */
 async function pollScheduled(
   config: Config,
@@ -341,7 +336,6 @@ async function pollScheduled(
   now: number,
   scheduleFile: string,
   channels: Channel[],
-  programsFor: (channel: Channel) => Promise<EpgProgram[]>,
   prefix: string,
 ): Promise<ScheduledPollResult> {
   // Re-read rather than reuse what the poll started with, so anything scheduled
@@ -351,7 +345,6 @@ async function pollScheduled(
   const result: ScheduledPollResult = {
     pending: pending.length,
     waiting: 0,
-    moved: 0,
     listed: 0,
     downloaded: 0,
     failed: 0,
@@ -373,20 +366,7 @@ async function pollScheduled(
     const writeNfo = recording.writeNfo ?? config.writeNfo;
     const comskip = recording.comskip ?? config.comskip;
 
-    const match = findProgram(recording, await programsFor(channel));
-    if (match && hasMoved(recording, match)) {
-      const from = recording.program.startLocal.slice(0, 16);
-      const to = match.startLocal.slice(0, 16);
-      console.log(`${prefix}${status("moved")} ${match.title} · ${from} → ${to}`);
-      result.moved++;
-      if (!dryRun) {
-        updateScheduled(recording.id, { program: snapshotOf(match) }, scheduleFile);
-      }
-    }
-
-    // Fall back to the times that were scheduled, so a listing the panel has
-    // dropped from the guide still gets recorded.
-    const program = match ?? toProgram(recording);
+    const program = toProgram(recording);
     const when = program.startLocal.slice(0, 16);
 
     if (!isDue(program, after, watch.readyGraceMinutes, Number.NEGATIVE_INFINITY, now)) {
@@ -396,20 +376,18 @@ async function pollScheduled(
       continue;
     }
 
-    if (!match) {
-      if (now > Date.parse(recording.program.end) + EXPIRE_AFTER_MS) {
-        console.log(`${prefix}${status("expired")} ${when} · ${program.title} · never showed up in the guide`);
-        result.expired++;
-        if (!dryRun) {
-          updateScheduled(
-            recording.id,
-            { status: "expired", completedAt: new Date().toISOString() },
-            scheduleFile,
-          );
-        }
-        continue;
+    // A download that keeps failing would otherwise be retried forever.
+    if (now > Date.parse(recording.program.end) + EXPIRE_AFTER_MS) {
+      console.log(`${prefix}${status("expired")} ${when} · ${program.title} · gave up after 48 hours`);
+      result.expired++;
+      if (!dryRun) {
+        updateScheduled(
+          recording.id,
+          { status: "expired", completedAt: new Date().toISOString() },
+          scheduleFile,
+        );
       }
-      console.log(`${prefix}${status("gone")} ${when} · ${program.title} · not in the guide, using the time you picked`);
+      continue;
     }
 
     const filename = outputFilename(
