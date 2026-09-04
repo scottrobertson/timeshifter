@@ -8,10 +8,14 @@ import {
   download,
   ensureEdl,
   outputFilename,
+  plannedWindow,
+  readyAtLocal,
   recordingWindow,
   setFileTime,
   syncNfo,
 } from "./timeshift.js";
+import { addScheduled, newRecording, snapshotOf } from "./scheduled.js";
+import { loadWatchConfig } from "./subscriptions.js";
 
 function formatProgramTime(program: EpgProgram): string {
   // Trim "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM".
@@ -57,12 +61,18 @@ async function pickChannel(channels: Channel[]): Promise<Channel> {
 async function pickProgram(
   programs: EpgProgram[],
   timezone: string | undefined,
+  message = "Pick a program (type to filter):",
 ): Promise<EpgProgram> {
   const now = Date.now();
   const tz = timezone ? ` ${timezone}` : "";
   const choices = programs.map((program, index) => {
     const airing = program.start.getTime() <= now && program.end.getTime() > now;
-    const suffix = airing ? "  [now airing — partial]" : "";
+    const upcoming = program.start.getTime() > now;
+    const suffix = upcoming
+      ? "  [upcoming — schedule]"
+      : airing
+        ? "  [now airing — partial]"
+        : "";
     return {
       name: `${formatProgramTimeRange(program)}${tz} · ${program.title}${suffix}`,
       value: index,
@@ -71,7 +81,7 @@ async function pickProgram(
   });
 
   const index = await search<number>({
-    message: "Pick a program to download (type to filter):",
+    message,
     source: async (input) => {
       const term = (input ?? "").toLowerCase();
       if (!term) return choices;
@@ -81,7 +91,53 @@ async function pickProgram(
   return programs[index]!;
 }
 
-async function downloadOne(config: Config, source: Source): Promise<void> {
+/**
+ * Shows still to come, with whatever is on next at the top. The guide arrives
+ * newest first, which suits a list of past shows but puts next week above tonight.
+ */
+export function upcomingSoonestFirst(programs: EpgProgram[], now: number): EpgProgram[] {
+  return programs
+    .filter((p) => p.start.getTime() > now)
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+/**
+ * Pick a channel and a show that hasn't aired yet, and add it to the schedule.
+ * The same thing the main flow does when you land on an upcoming show, but it
+ * only offers shows that are still to come.
+ */
+export async function scheduleOne(
+  config: Config,
+  source: Source,
+  readyGraceMinutes: number,
+): Promise<void> {
+  const channels = await source.archiveChannels();
+  if (channels.length === 0) {
+    console.log("No channels with a catchup archive were found.");
+    return;
+  }
+
+  const channel = await pickChannel(channels);
+  const upcoming = upcomingSoonestFirst(await source.programs(channel), Date.now());
+
+  if (upcoming.length === 0) {
+    console.log(`The guide has nothing coming up for ${channel.name}.`);
+    return;
+  }
+
+  const program = await pickProgram(
+    upcoming,
+    source.timezone,
+    "Pick a show to record (type to filter):",
+  );
+  await scheduleUpcoming(config, source, channel, program, readyGraceMinutes);
+}
+
+async function downloadOne(
+  config: Config,
+  source: Source,
+  readyGraceMinutes: number,
+): Promise<void> {
   const channels = await source.archiveChannels();
   if (channels.length === 0) {
     console.log("No channels with a catchup archive were found.");
@@ -93,15 +149,134 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
 
   const epg = await source.programs(channel);
   const now = Date.now();
-  // Only programs that have already started and are inside the archive window.
-  const downloadable = epg.filter((p) => p.hasArchive && p.start.getTime() <= now);
+  // A past show only if it's still in the archive. Anything still to come can be
+  // scheduled instead, and downloaded once it has aired.
+  const pickable = epg.filter((p) => p.start.getTime() > now || p.hasArchive);
 
-  if (downloadable.length === 0) {
-    console.log(`No archived programs available for ${channel.name}.`);
+  if (pickable.length === 0) {
+    console.log(`Nothing archived or coming up for ${channel.name}.`);
     return;
   }
 
-  const program = await pickProgram(downloadable, source.timezone);
+  const program = await pickProgram(pickable, source.timezone);
+  if (program.start.getTime() > Date.now()) {
+    await scheduleUpcoming(config, source, channel, program, readyGraceMinutes);
+    return;
+  }
+  await downloadNow(config, source, channel, program);
+}
+
+/**
+ * Save an upcoming show to the schedule. It can't be downloaded yet, because the
+ * catchup only exists once the show has aired, so watch mode picks it up later.
+ */
+async function scheduleUpcoming(
+  config: Config,
+  source: Source,
+  channel: Channel,
+  program: EpgProgram,
+  readyGraceMinutes: number,
+): Promise<void> {
+  const programMinutes = Math.round(
+    (program.end.getTime() - program.start.getTime()) / 60_000,
+  );
+
+  let before = config.paddingBefore;
+  let after = config.paddingAfter;
+  let writeNfo = config.writeNfo;
+  let comskip = config.comskip;
+
+  const printPlan = (): void => {
+    const window = plannedWindow(program, before, after);
+    const ready = readyAtLocal(program, after + readyGraceMinutes);
+    const padding = before || after ? `${before} min before, ${after} min after` : "none";
+    const tz = source.timezone ? ` ${source.timezone}` : "";
+    console.log("");
+    console.log(`  Channel:  ${channel.name}`);
+    console.log(`  Program:  ${program.title}`);
+    console.log(`  Airs:     ${program.startLocal.slice(0, 16)}${tz}`);
+    console.log(`  Ends:     ${program.endLocal.slice(0, 16)}${tz}`);
+    console.log(`  Runtime:  ${programMinutes} min`);
+    console.log("");
+    console.log(`  Padding:  ${padding}`);
+    console.log(`  Start:    ${window.startLocal.slice(0, 16)}${tz}`);
+    console.log(`  End:      ${window.endLocal.slice(0, 16)}${tz}`);
+    console.log(`  Length:   ${window.minutes} min`);
+    console.log(`  Ready:    ${ready.slice(0, 16)}${tz}`);
+    // The guide can move the show before it airs, and the name follows the guide.
+    console.log(`  Saving:   ${config.downloadDir}/${outputFilename(config, channel, program)}`);
+    console.log(`  .nfo:     ${writeNfo ? "write" : "skip"}`);
+    console.log(`  comskip:  ${comskip ? "run" : "skip"}`);
+    console.log("");
+  };
+
+  printPlan();
+
+  for (;;) {
+    const action = await select({
+      message: "Schedule this?",
+      choices: [
+        { name: "Schedule", value: "schedule" },
+        { name: "Adjust padding", value: "adjust" },
+        {
+          name: `Write .nfo:  ${writeNfo ? "on" : "off"}  (select to turn ${writeNfo ? "off" : "on"})`,
+          value: "toggle-nfo",
+        },
+        {
+          name: `Run comskip: ${comskip ? "on" : "off"}  (select to turn ${comskip ? "off" : "on"})`,
+          value: "toggle-comskip",
+        },
+        { name: "Cancel", value: "cancel" },
+      ],
+    });
+
+    if (action === "cancel") {
+      console.log("Skipped.");
+      return;
+    }
+    if (action === "schedule") break;
+
+    if (action === "toggle-nfo") {
+      writeNfo = !writeNfo;
+      printPlan();
+      continue;
+    }
+    if (action === "toggle-comskip") {
+      comskip = !comskip;
+      printPlan();
+      continue;
+    }
+
+    console.log("\nMinutes to add at each end. A negative number records less.");
+    before = Math.round((await number({ message: "Before:", default: before })) ?? before);
+    after = Math.round((await number({ message: "After:", default: after })) ?? after);
+    printPlan();
+  }
+
+  // Only save what was changed here, so a later edit to config.json still
+  // applies to everything that was left alone.
+  addScheduled(
+    newRecording({
+      channel: channel.name,
+      program: snapshotOf(program),
+      paddingBefore: before === config.paddingBefore ? undefined : before,
+      paddingAfter: after === config.paddingAfter ? undefined : after,
+      writeNfo: writeNfo === config.writeNfo ? undefined : writeNfo,
+      comskip: comskip === config.comskip ? undefined : comskip,
+    }),
+  );
+
+  const ready = readyAtLocal(program, after + readyGraceMinutes).slice(0, 16);
+  console.log(`\n  Scheduled. Watch mode will download it after ${ready}.`);
+  console.log(`  Run "timeshifter watch" if it isn't already running.`);
+}
+
+async function downloadNow(
+  config: Config,
+  source: Source,
+  channel: Channel,
+  program: EpgProgram,
+): Promise<void> {
   let filename = outputFilename(config, channel, program);
   const programMinutes = Math.round(
     (program.end.getTime() - program.start.getTime()) / 60_000,
@@ -244,13 +419,22 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
 export async function run(config: Config): Promise<void> {
   const source: Source = new XtreamSource(config);
 
+  // Only needed to tell you when a scheduled recording will happen. Not worth
+  // failing the whole run over, so a broken watch block just means no grace.
+  let readyGraceMinutes = 0;
+  try {
+    readyGraceMinutes = loadWatchConfig().readyGraceMinutes;
+  } catch {
+    // Keep the default.
+  }
+
   console.log(await source.connect());
   console.log("");
 
   let again = true;
   while (again) {
-    await downloadOne(config, source);
-    again = await confirm({ message: "Download another?", default: false });
+    await downloadOne(config, source, readyGraceMinutes);
+    again = await confirm({ message: "Pick another?", default: false });
     console.log("");
   }
 }

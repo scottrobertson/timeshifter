@@ -4,9 +4,10 @@ Most IPTV providers keep a catchup archive for their channels, usually going bac
 
 timeshifter lets you download from that archive, so you can catch anything you missed.
 
-There are two ways to run it:
+There are three ways to run it:
 
 - **[Interactive mode](#interactive-mode-pick-a-show)** — you pick a channel and a past show from the guide, and it downloads it.
+- **[Scheduled recordings](#scheduled-recordings-pick-shows-before-they-air)** — you pick a show that hasn't aired yet, and it's downloaded once for you after it finishes.
 - **[Watch mode](#watch-mode-automatic-downloads)** — you set up rules (e.g. "every NASA launch") and it downloads matching shows automatically as soon as they air.
 
 For now it works with Xtream Codes providers (the most common kind, where you log in with a URL, username and password).
@@ -14,6 +15,7 @@ For now it works with Xtream Codes providers (the most common kind, where you lo
 ## Features
 
 - Pick a past show from the channel's guide and download it.
+- Or pick a show that's still to come, and have it downloaded once, after it airs.
 - Or run `watch` mode to download matching shows automatically as soon as they air.
 - Type to filter both the channel list and the guide.
 - Pad or trim the start and end of a recording, as a default or per-download.
@@ -26,7 +28,7 @@ For now it works with Xtream Codes providers (the most common kind, where you lo
 
 ## Setup
 
-Everything lives in a single `config.json` in the working directory. Copy the example and fill in your provider's base URL (including port), username, password, and where to save downloads:
+All the configuration lives in a single `config.json` in the working directory. Copy the example and fill in your provider's base URL (including port), username, password, and where to save downloads:
 
 ```json
 {
@@ -38,6 +40,14 @@ Everything lives in a single `config.json` in the working directory. Copy the ex
 ```
 
 If you've cloned the repo, run `cp config.example.json config.json` and edit it.
+
+There's a second file, `scheduled.json`, which holds any [scheduled recordings](#scheduled-recordings-pick-shows-before-they-air). It's written for you, so you never need to edit it, but if you're running with Docker, create it before the first run:
+
+```
+touch scheduled.json
+```
+
+Docker creates a *directory* when you bind mount a file that isn't there yet, and then nothing can write to it.
 
 `url`, `username`, `password` and `downloadDir` are required. Everything else is optional:
 
@@ -63,11 +73,12 @@ Pick whichever way to run suits you:
 <details>
 <summary><strong>Run with Docker</strong></summary>
 
-There's a prebuilt image, so there's nothing to install. It's an interactive CLI, so run it with `-it`, mount your `config.json`, and mount a folder for the downloads (set `downloadDir` in the config to wherever you mount it, e.g. `/catchup`):
+There's a prebuilt image, so there's nothing to install. It's an interactive CLI, so run it with `-it`, mount your `config.json` and `scheduled.json`, and mount a folder for the downloads (set `downloadDir` in the config to wherever you mount it, e.g. `/catchup`):
 
 ```
 docker run -it --rm \
   -v "$(pwd)/config.json:/app/config.json:ro" \
+  -v "$(pwd)/scheduled.json:/app/scheduled.json" \
   -v "$(pwd)/downloads:/catchup" \
   ghcr.io/scottrobertson/timeshifter:latest
 ```
@@ -85,6 +96,7 @@ services:
     image: ghcr.io/scottrobertson/timeshifter:latest
     volumes:
       - ./config.json:/app/config.json:ro
+      - ./scheduled.json:/app/scheduled.json
       - ./downloads:/catchup
     stdin_open: true
     tty: true
@@ -107,6 +119,65 @@ npm start
 ```
 
 </details>
+
+## Scheduled recordings (pick shows before they air)
+
+For a one off, like a game that's on later in the week, pick it out of the guide before it airs and forget about it.
+
+```
+npm start schedule
+```
+
+That's where you set them up, see what's coming, and drop any you've changed your mind about:
+
+```
+  pending 2026-09-05 19:30  NASA TV  Artemis II Launch   ·  ready 2026-09-05 22:30
+  done    2026-09-01 14:00  NASA TV  Press Conference    ·  /catchup/NASA TV - Press Conference - 2026-09-01_14-00.ts
+
+? What do you want to do?
+> Schedule a show
+  Remove one
+  Quit
+```
+
+Choose "Schedule a show" and you pick a channel, then a show from the ones still to come.
+
+You can also get there from the normal flow: run `timeshifter` and shows that haven't started yet are in the list alongside the past ones, marked `[upcoming — schedule]`.
+
+```
+Pick a program (type to filter):
+> 2026-09-05 19:30-22:00 · Artemis II Launch   [upcoming — schedule]
+  2026-09-05 14:00-15:00 · Mission Briefing    [upcoming — schedule]
+  2026-09-04 09:00-10:30 · Crew Arrival        [now airing — partial]
+  2026-09-03 18:00-20:00 · Press Conference
+```
+
+Either way you get the usual plan, with a `Ready` line saying when it'll be downloaded. Set the padding, then choose Schedule.
+
+```
+  Channel:  NASA TV
+  Program:  Artemis II Launch
+  Airs:     2026-09-05 19:30
+  Ends:     2026-09-05 22:00
+  Runtime:  150 min
+
+  Padding:  5 min before, 30 min after
+  Start:    2026-09-05 19:25
+  End:      2026-09-05 22:30
+  Length:   185 min
+  Ready:    2026-09-05 22:30
+```
+
+The download happens **after** the show has finished, not while it's on. Catchup is served by time, so the footage has to exist before it can be asked for. `Ready` is the show's end plus your after-padding (plus `readyGraceMinutes`, if you've set one).
+
+**Watch mode has to be running for a scheduled recording to happen.** It's the thing that notices the slot has passed and does the download, so leave `timeshifter watch` running the same way you would for subscriptions. You don't need any subscriptions in `config.json` for it, watch mode is happy with scheduled recordings alone.
+
+Some things worth knowing:
+
+- **It records the time slot, not the show.** Picking a show is just a convenient way to choose a start and end. Whatever is on that channel between those times is what you get, so if the schedule slips, pad it out. The guide isn't consulted again once it's scheduled.
+- If the download doesn't work, it's retried on every poll for 48 hours after the slot ended, then given up on and marked `expired`.
+- Padding, `.nfo` and comskip are saved per recording only if you changed them at the prompt. Leave them alone and they follow your `config.json`, so a later edit there still applies.
+- Finished ones stay in the list for 30 days so you can see what happened, then the entry drops out of `scheduled.json`. That only tidies the list. The recording itself is never deleted.
 
 ## Watch mode (automatic downloads)
 
@@ -147,16 +218,19 @@ Add a `watch` block to your `config.json` (see `config.example.json`):
 
 It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. `config.json` is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
 
+Every poll also picks up any [scheduled recordings](#scheduled-recordings-pick-shows-before-they-air), so you can schedule a show while the watcher is running and it'll be seen on the next round. If that's all you use watch mode for, you don't need a `subscriptions` list at all.
+
 Then pick whichever way to run suits you:
 
 <details>
 <summary><strong>Run with Docker</strong></summary>
 
-It's a long-running process, so run it detached (no `-it`). The subscriptions live in `config.json`, so there's just the one file to mount:
+It's a long-running process, so run it detached (no `-it`):
 
 ```
 docker run -d --restart unless-stopped \
   -v "$(pwd)/config.json:/app/config.json:ro" \
+  -v "$(pwd)/scheduled.json:/app/scheduled.json" \
   -v "$(pwd)/downloads:/catchup" \
   ghcr.io/scottrobertson/timeshifter:latest watch
 ```
@@ -178,6 +252,7 @@ services:
       TZ: Europe/London # for the log timestamps; optional
     volumes:
       - ./config.json:/app/config.json:ro
+      - ./scheduled.json:/app/scheduled.json
       - ./downloads:/catchup
 ```
 

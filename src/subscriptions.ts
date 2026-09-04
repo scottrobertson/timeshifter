@@ -36,9 +36,14 @@ export interface WatchConfig {
   subscriptions: Subscription[];
 }
 
+/** Does the channel have exactly this name, give or take case and stray spaces? */
+export function channelNameMatches(name: string, channel: Channel): boolean {
+  return channel.name.trim().toLowerCase() === name.trim().toLowerCase();
+}
+
 /** Does the channel's name exactly match the subscription's channel (case-insensitive)? */
 export function channelMatches(sub: Subscription, channel: Channel): boolean {
-  return channel.name.trim().toLowerCase() === sub.channel.trim().toLowerCase();
+  return channelNameMatches(sub.channel, channel);
 }
 
 /** Does the title contain all of titleContains and none of titleExcludes? */
@@ -132,23 +137,28 @@ function parseSubscription(item: unknown, index: number): Subscription {
   };
 }
 
-/** Read and validate the "watch" block of the config file. Throws with a clear message. */
+/**
+ * Read and validate the "watch" block of the config file. Throws with a clear
+ * message. Subscriptions are optional, because watch mode also exists to pick up
+ * one-off scheduled recordings, which live outside the config file.
+ */
 export function loadWatchConfig(file = DEFAULT_CONFIG_FILE): WatchConfig {
   const config = readConfigFile(file);
 
-  const watch = config.watch;
+  const watch = config.watch ?? {};
   if (typeof watch !== "object" || watch === null || Array.isArray(watch)) {
-    fail(`needs a "watch" object for watch mode (see config.example.json).`);
+    fail(`has a "watch" that must be an object (see config.example.json).`);
   }
   const obj = watch as Record<string, unknown>;
 
-  if (!Array.isArray(obj.subscriptions) || obj.subscriptions.length === 0) {
-    fail(`needs a non-empty "watch.subscriptions" array.`);
+  const subscriptions = obj.subscriptions ?? [];
+  if (!Array.isArray(subscriptions)) {
+    fail(`has a "watch.subscriptions" that must be an array.`);
   }
 
   return {
     pollIntervalMinutes: asInt(obj.pollIntervalMinutes, "pollIntervalMinutes") ?? 10,
     readyGraceMinutes: asInt(obj.readyGraceMinutes, "readyGraceMinutes") ?? 0,
-    subscriptions: (obj.subscriptions as unknown[]).map((item, i) => parseSubscription(item, i)),
+    subscriptions: (subscriptions as unknown[]).map((item, i) => parseSubscription(item, i)),
   };
 }
