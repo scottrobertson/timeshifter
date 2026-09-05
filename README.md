@@ -4,11 +4,10 @@ Most IPTV providers keep a catchup archive for their channels, usually going bac
 
 timeshifter lets you download from that archive, so you can catch anything you missed.
 
-There are three ways to run it:
+There are two ways to use it:
 
 - **[Interactive mode](#interactive-mode-pick-a-show)** — you pick a channel and a past show from the guide, and it downloads it.
-- **[Scheduled recordings](#scheduled-recordings-pick-shows-before-they-air)** — you pick a show that hasn't aired yet, and it's downloaded once for you after it finishes.
-- **[Watch mode](#watch-mode-automatic-downloads)** — you set up rules (e.g. "every NASA launch") and it downloads matching shows automatically as soon as they air.
+- **[Automatic downloads](#automatic-downloads-watch-mode)** — you leave `watch` running and it downloads for you, either from rules you set up (e.g. "every NASA launch") or from one-offs you picked out of the guide before they aired.
 
 For now it works with Xtream Codes providers (the most common kind, where you log in with a URL, username and password).
 
@@ -41,7 +40,7 @@ All the configuration lives in a single `config.json` in the working directory. 
 
 If you've cloned the repo, run `cp config.example.json config.json` and edit it.
 
-There's a second file, `scheduled.json`, which holds any [scheduled recordings](#scheduled-recordings-pick-shows-before-they-air). It's written for you, so you never need to edit it, but if you're running with Docker, create it before the first run:
+There's a second file, `scheduled.json`, which holds any [scheduled recordings](#scheduled-recordings). It's written for you, so you never need to edit it, but if you're running with Docker, create it before the first run:
 
 ```
 touch scheduled.json
@@ -62,11 +61,11 @@ Docker creates a *directory* when you bind mount a file that isn't there yet, an
 | `setAiredTime` | `true` | Set the file's modified time to when the show aired, so it sorts by air date in a media library. Set to `false` to keep the download time. |
 | `writeNfo` | `true` | Write a `.nfo` metadata file next to each recording (title, description, air date, runtime, and season/episode when the guide includes it) so Emby, Jellyfin and Kodi read it instead of guessing from the filename. Set to `false` to skip it. You can also flip this per-download at the confirm prompt. |
 | `comskip` | `false` | Run [comskip](https://github.com/erikkaashoek/Comskip) on each recording to write a `.edl` commercial-skip file next to it. You can also flip this per-download at the confirm prompt. See [Commercial detection](#commercial-detection-edl). |
-| `watch` | — | Watch-mode rules. See [Watch mode](#watch-mode-automatic-downloads). |
+| `watch` | — | Watch-mode rules. See [Subscriptions](#subscriptions). |
 
 ## Interactive mode (pick a show)
 
-This is the default: it prompts you to pick a channel and a show, then downloads it. If you'd rather have shows download automatically, see [Watch mode](#watch-mode-automatic-downloads) below.
+This is the default: it prompts you to pick a channel and a show, then downloads it. If you'd rather have shows download automatically, see [Automatic downloads](#automatic-downloads-watch-mode) below.
 
 Pick whichever way to run suits you:
 
@@ -120,13 +119,90 @@ npm start
 
 </details>
 
-## Scheduled recordings (pick shows before they air)
+## Automatic downloads (watch mode)
 
-For a one off, like a game that's on later in the week, pick it out of the guide before it airs and forget about it.
+`watch` is a long-running process that re-checks the guide every few minutes and downloads whatever is due. It gets its work from two places, and either one on its own is fine:
+
+- **[Subscriptions](#subscriptions)** are standing rules in `config.json`, like "every NASA launch". Good for anything you always want.
+- **[Scheduled recordings](#scheduled-recordings)** are one-offs you pick out of the guide before they air. Good for a game that's on later in the week.
+
+Both download **after** the show has finished, not while it's on. Catchup is served by time, so the footage has to exist before it can be asked for.
+
+### Subscriptions
+
+Let timeshifter watch the guide and download anything that matches a set of rules, as soon as it has finished airing. Add a `watch` block to your `config.json` (see `config.example.json`):
+
+```json
+{
+  "url": "http://my-provider.com:8080",
+  "username": "your-username",
+  "password": "your-password",
+  "downloadDir": "/catchup",
+  "watch": {
+    "pollIntervalMinutes": 10,
+    "subscriptions": [
+      {
+        "name": "NASA launches",
+        "channel": "NASA TV",
+        "titleContains": ["Launch", "Live"],
+        "from": "2026-06-01",
+        "paddingBefore": 5,
+        "paddingAfter": 30
+      }
+    ]
+  }
+}
+```
+
+- `channel` is the channel's exact name (case-insensitive), as shown in the interactive channel list, e.g. `"NASA TV"`.
+- `titleContains` must **all** appear in the title, and `titleExcludes` (optional) must **not**. Matching is case-insensitive.
+- `from` (optional) only downloads shows that finish after that date. Leave it out to grab everything currently in the channel's archive.
+- `paddingBefore` / `paddingAfter` (optional) override the global padding for this rule.
+- `filenameTemplate` (optional) overrides the global `filenameTemplate` for this rule, so you can sort each subscription into its own folder, e.g. `"NASA/{title} - {date}.{ext}"`.
+- `filenameStrip` (optional) overrides the global `filenameStrip` for this rule.
+- `comskip` (optional) overrides the global `comskip` for this rule, either way: set `false` to turn it off on a subscription even when it's on globally, or `true` to turn it on for just this one.
+- `pollIntervalMinutes` (default 10) is how often the guide is re-checked. `readyGraceMinutes` (default 0) adds an extra wait after a show ends before downloading, if your provider is slow to make catchup available.
+
+### Scheduled recordings
+
+For a one off, like a game that's on later in the week, pick it out of the guide before it airs and forget about it. You don't need any subscriptions in `config.json` for this, or even a `watch` block.
+
+**Nothing happens until the watcher is running.** It's the thing that notices the slot has passed and does the download, so leave it running as [below](#running-the-watcher). You can schedule a show while it's running and it'll be picked up on the next poll.
+
+Setting one up is [interactive mode](#interactive-mode-pick-a-show) with `schedule` on the end, so pick whichever way to run suits you:
+
+<details>
+<summary><strong>Run with Docker</strong></summary>
+
+```
+docker run -it --rm \
+  -v "$(pwd)/config.json:/app/config.json:ro" \
+  -v "$(pwd)/scheduled.json:/app/scheduled.json" \
+  -v "$(pwd)/downloads:/catchup" \
+  ghcr.io/scottrobertson/timeshifter:latest schedule
+```
+
+</details>
+
+<details>
+<summary><strong>Run with Docker Compose</strong></summary>
+
+`run` starts a one-off container from a service you've already defined, with the same mounts. What you pass replaces that service's `command`:
+
+```
+docker compose run --rm timeshifter schedule
+```
+
+</details>
+
+<details>
+<summary><strong>Run with npm</strong></summary>
 
 ```
 npm start schedule
 ```
+
+</details>
 
 That's where you set them up, see what's coming, and drop any you've changed your mind about:
 
@@ -171,9 +247,7 @@ Either way you get the usual plan, with a `Ready` line saying when it'll be down
   comskip:  run
 ```
 
-The download happens **after** the show has finished, not while it's on. Catchup is served by time, so the footage has to exist before it can be asked for. `Ready` is the show's end plus your after-padding (plus `readyGraceMinutes`, if you've set one).
-
-**Watch mode has to be running for a scheduled recording to happen.** It's the thing that notices the slot has passed and does the download, so leave `timeshifter watch` running the same way you would for subscriptions. You don't need any subscriptions in `config.json` for it, watch mode is happy with scheduled recordings alone.
+`Ready` is the show's end plus your after-padding (plus `readyGraceMinutes`, if you've set one).
 
 Some things worth knowing:
 
@@ -182,48 +256,11 @@ Some things worth knowing:
 - Padding, `.nfo` and comskip are saved per recording only if you changed them at the prompt. Leave them alone and they follow your `config.json`, so a later edit there still applies. Same for the filename: edit it and that exact name is used, otherwise it's built from `filenameTemplate` when the download happens.
 - Finished ones stay in the list for 30 days so you can see what happened, then the entry drops out of `scheduled.json`. That only tidies the list. The recording itself is never deleted.
 
-## Watch mode (automatic downloads)
+### Running the watcher
 
-Instead of picking shows by hand, you can let timeshifter watch the guide and download anything that matches a set of rules, as soon as it has finished airing. Good for "grab every NASA launch" type things.
+This is the part that does the downloading, for subscriptions and scheduled recordings alike. It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. `config.json` is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
 
-Add a `watch` block to your `config.json` (see `config.example.json`):
-
-```json
-{
-  "url": "http://my-provider.com:8080",
-  "username": "your-username",
-  "password": "your-password",
-  "downloadDir": "/catchup",
-  "watch": {
-    "pollIntervalMinutes": 10,
-    "subscriptions": [
-      {
-        "name": "NASA launches",
-        "channel": "NASA TV",
-        "titleContains": ["Launch", "Live"],
-        "from": "2026-06-01",
-        "paddingBefore": 5,
-        "paddingAfter": 30
-      }
-    ]
-  }
-}
-```
-
-- `channel` is the channel's exact name (case-insensitive), as shown in the interactive channel list, e.g. `"NASA TV"`.
-- `titleContains` must **all** appear in the title, and `titleExcludes` (optional) must **not**. Matching is case-insensitive.
-- `from` (optional) only downloads shows that finish after that date. Leave it out to grab everything currently in the channel's archive.
-- `paddingBefore` / `paddingAfter` (optional) override the global padding for this rule.
-- `filenameTemplate` (optional) overrides the global `filenameTemplate` for this rule, so you can sort each subscription into its own folder, e.g. `"NASA/{title} - {date}.{ext}"`.
-- `filenameStrip` (optional) overrides the global `filenameStrip` for this rule.
-- `comskip` (optional) overrides the global `comskip` for this rule, either way: set `false` to turn it off on a subscription even when it's on globally, or `true` to turn it on for just this one.
-- `pollIntervalMinutes` (default 10) is how often the guide is re-checked. `readyGraceMinutes` (default 0) adds an extra wait after a show ends before downloading, if your provider is slow to make catchup available.
-
-It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. `config.json` is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
-
-Every poll also picks up any [scheduled recordings](#scheduled-recordings-pick-shows-before-they-air), so you can schedule a show while the watcher is running and it'll be seen on the next round. If that's all you use watch mode for, you don't need a `subscriptions` list at all.
-
-Then pick whichever way to run suits you:
+Pick whichever way to run suits you:
 
 <details>
 <summary><strong>Run with Docker</strong></summary>
@@ -293,7 +330,7 @@ Set `"comskip": true` to run [comskip](https://github.com/erikkaashoek/Comskip) 
 
 - It runs after the download, so it adds some processing time per recording (comskip reads the whole file).
 - In watch mode it also **backfills**: any recording already in your download dir that's missing a `.edl` gets one on the next poll, then it's left alone.
-- This is the global default. Each subscription can override it with its own `comskip` (see [Watch mode](#watch-mode-automatic-downloads)), so you can leave it on for most and turn it off on the odd one, or the other way around. In interactive mode you can also flip it on or off per download at the confirm prompt.
+- This is the global default. Each subscription can override it with its own `comskip` (see [Subscriptions](#subscriptions)), so you can leave it on for most and turn it off on the odd one, or the other way around. In interactive mode you can also flip it on or off per download at the confirm prompt.
 - The Docker image bundles comskip, so `"comskip": true` works out of the box. Running with Node instead, install comskip yourself and either put it on your `PATH` or point `COMSKIP_PATH` at the binary.
 - `COMSKIP_PATH` overrides which comskip binary is used, if you want a specific build.
 - Detection runs with comskip's defaults. To tune it, point `COMSKIP_INI` at your own `comskip.ini`; otherwise a minimal built-in one is used that just turns on `.edl` output.
