@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { search, confirm } from "@inquirer/prompts";
+import { search, confirm, select } from "@inquirer/prompts";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
@@ -13,6 +13,7 @@ import {
   syncNfo,
 } from "./timeshift.js";
 import { defaultPlan, planOverrides, reviewPlan, type PlanContext } from "./plan.js";
+import { manageScheduled } from "./schedule-cli.js";
 import { addScheduled, newRecording, snapshotOf } from "./scheduled.js";
 import { loadWatchConfig } from "./subscriptions.js";
 
@@ -60,13 +61,9 @@ async function pickProgram(
   const now = Date.now();
   const tz = timezone ? ` ${timezone}` : "";
   const choices = programs.map((program, index) => {
+    // A show that's still on only has the part that has aired in the archive.
     const airing = program.start.getTime() <= now && program.end.getTime() > now;
-    const upcoming = program.start.getTime() > now;
-    const suffix = upcoming
-      ? "  [upcoming — schedule]"
-      : airing
-        ? "  [now airing — partial]"
-        : "";
+    const suffix = airing ? "  [now airing — partial]" : "";
     return {
       name: `${formatProgramTimeRange(program)}${tz} · ${program.title}${suffix}`,
       value: index,
@@ -96,10 +93,14 @@ export function upcomingSoonestFirst(programs: EpgProgram[], now: number): EpgPr
 }
 
 /**
- * Pick a channel and a show that hasn't aired yet, and add it to the schedule.
- * The same thing the main flow does when you land on an upcoming show, but it
- * only offers shows that are still to come.
+ * Shows you can download right now: the provider has them in its archive, and
+ * they've at least started. Anything still to come has to be scheduled instead.
  */
+export function downloadableNow(programs: EpgProgram[], now: number): EpgProgram[] {
+  return programs.filter((p) => p.hasArchive && p.start.getTime() <= now);
+}
+
+/** Pick a channel and a show that hasn't aired yet, and add it to the schedule. */
 export async function scheduleOne(
   config: Config,
   source: Source,
@@ -127,11 +128,7 @@ export async function scheduleOne(
   await scheduleUpcoming(config, source, channel, program, readyGraceMinutes);
 }
 
-async function downloadOne(
-  config: Config,
-  source: Source,
-  readyGraceMinutes: number,
-): Promise<void> {
+async function downloadOne(config: Config, source: Source): Promise<void> {
   const channels = await source.archiveChannels();
   if (channels.length === 0) {
     console.log("No channels with a catchup archive were found.");
@@ -140,24 +137,14 @@ async function downloadOne(
   console.log(`${channels.length} channels with an archive available.\n`);
 
   const channel = await pickChannel(channels);
-
-  const epg = await source.programs(channel);
-  const now = Date.now();
-  // A past show only if it's still in the archive. Anything still to come can be
-  // scheduled instead, and downloaded once it has aired.
-  const pickable = epg.filter((p) => p.start.getTime() > now || p.hasArchive);
+  const pickable = downloadableNow(await source.programs(channel), Date.now());
 
   if (pickable.length === 0) {
-    console.log(`Nothing archived or coming up for ${channel.name}.`);
+    console.log(`Nothing in the archive for ${channel.name}.`);
     return;
   }
 
-  const program = await pickProgram(pickable, source.timezone);
-  if (program.start.getTime() > Date.now()) {
-    await scheduleUpcoming(config, source, channel, program, readyGraceMinutes);
-    return;
-  }
-  await downloadNow(config, source, channel, program);
+  await downloadNow(config, source, channel, await pickProgram(pickable, source.timezone));
 }
 
 /**
@@ -281,13 +268,37 @@ export async function run(config: Config): Promise<void> {
     // Keep the default.
   }
 
-  console.log(await source.connect());
-  console.log("");
-
-  let again = true;
-  while (again) {
-    await downloadOne(config, source, readyGraceMinutes);
-    again = await confirm({ message: "Pick another?", default: false });
+  // Only the guide needs the provider, so seeing what you've already scheduled
+  // doesn't wait on it.
+  let connected = false;
+  const connect = async (): Promise<void> => {
+    if (connected) return;
     console.log("");
+    console.log(await source.connect());
+    connected = true;
+  };
+
+  for (;;) {
+    console.log("");
+    const action = await select({
+      message: "What do you want to do?",
+      choices: [
+        { name: "Download a show", value: "download" },
+        { name: "Schedule a recording", value: "schedule" },
+        { name: "Manage scheduled recordings", value: "manage" },
+        { name: "Quit", value: "quit" },
+      ],
+    });
+
+    if (action === "quit") return;
+
+    if (action === "manage") {
+      await manageScheduled(config, readyGraceMinutes);
+      continue;
+    }
+
+    await connect();
+    if (action === "download") await downloadOne(config, source);
+    else await scheduleOne(config, source, readyGraceMinutes);
   }
 }

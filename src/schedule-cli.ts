@@ -1,11 +1,7 @@
 import { select } from "@inquirer/prompts";
-import { scheduleOne } from "./cli.js";
 import type { Config } from "./config.js";
 import { loadSchedule, removeScheduled, toProgram, type ScheduledRecording } from "./scheduled.js";
-import type { Source } from "./source.js";
-import { loadWatchConfig } from "./subscriptions.js";
 import { readyAtLocal } from "./timeshift.js";
-import { XtreamSource } from "./xtream.js";
 
 /** Still to come at the top, soonest first, then the finished ones most recent first. */
 function order(recordings: ScheduledRecording[]): ScheduledRecording[] {
@@ -36,27 +32,11 @@ function label(
   return `${status} ${when}  ${channel}  ${recording.program.title}${tail}`;
 }
 
-/** Set up one-off recordings, and see or drop the ones already set up. */
-export async function runSchedule(config: Config): Promise<void> {
-  // Only needed to say when a recording will happen. A broken watch block
-  // shouldn't stop you scheduling, so fall back to no grace.
-  let readyGraceMinutes = 0;
-  try {
-    readyGraceMinutes = loadWatchConfig().readyGraceMinutes;
-  } catch {
-    // Keep the default.
-  }
-
-  // Listing doesn't need the provider, so don't make someone wait on it just to
-  // see what they've already set up.
-  const source: Source = new XtreamSource(config);
-  let connected = false;
-  const connect = async (): Promise<void> => {
-    if (connected) return;
-    console.log(await source.connect());
-    connected = true;
-  };
-
+/** See what's scheduled, and drop anything you've changed your mind about. */
+export async function manageScheduled(
+  config: Config,
+  readyGraceMinutes: number,
+): Promise<void> {
   for (;;) {
     const recordings = order(loadSchedule());
     const width = Math.max(0, ...recordings.map((r) => r.channel.length));
@@ -65,45 +45,26 @@ export async function runSchedule(config: Config): Promise<void> {
     console.log("");
     if (recordings.length === 0) {
       console.log("  Nothing scheduled.");
-    } else {
-      for (const recording of recordings) console.log(`  ${describe(recording)}`);
-    }
-    console.log("");
-
-    const pending = recordings.filter((r) => r.status === "pending");
-    const action = await select({
-      message: "What do you want to do?",
-      choices: [
-        { name: "Schedule a show", value: "add" },
-        ...(recordings.length ? [{ name: "Remove one", value: "remove" }] : []),
-        { name: "Quit", value: "quit" },
-      ],
-    });
-
-    if (action === "quit") {
-      if (pending.length) {
-        console.log(`\n  Run "timeshifter watch" to have these downloaded.`);
-      }
       return;
     }
-
-    if (action === "add") {
-      await connect();
-      console.log("");
-      await scheduleOne(config, source, readyGraceMinutes);
-      continue;
-    }
+    for (const recording of recordings) console.log(`  ${describe(recording)}`);
+    console.log("");
 
     const id = await select<string>({
       message: "Remove which?",
       choices: [
         ...recordings.map((r) => ({ name: describe(r), value: r.id })),
-        { name: "Cancel", value: "" },
+        { name: "Back", value: "" },
       ],
     });
-    if (id) {
-      removeScheduled(id);
-      console.log("Removed.");
+
+    if (!id) {
+      if (recordings.some((r) => r.status === "pending")) {
+        console.log(`\n  Run "timeshifter watch" to have these downloaded.`);
+      }
+      return;
     }
+    removeScheduled(id);
+    console.log("Removed.");
   }
 }

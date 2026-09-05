@@ -6,8 +6,8 @@ timeshifter lets you download from that archive, so you can catch anything you m
 
 There are two ways to use it:
 
-- **[Interactive mode](#interactive-mode-pick-a-show)** — you pick a channel and a past show from the guide, and it downloads it.
-- **[Automatic downloads](#automatic-downloads-watch-mode)** — you leave `watch` running and it downloads for you, either from rules you set up (e.g. "every NASA launch") or from one-offs you picked out of the guide before they aired.
+- **[Interactive mode](#interactive-mode)** — you pick a channel and a show from the guide, either to download now or to schedule for when it airs.
+- **[Automatic downloads](#automatic-downloads)** — you leave `watch` running and it downloads for you, either from rules you set up (e.g. "every NASA launch") or from one-offs you picked out of the guide before they aired.
 
 For now it works with Xtream Codes providers (the most common kind, where you log in with a URL, username and password).
 
@@ -42,8 +42,6 @@ If you've cloned the repo, `cp config/config.example.json config/config.json` ge
 
 The same folder is where `scheduled.json` ends up, which holds any [scheduled recordings](#scheduled-recordings). It's written for you, so you never need to create or edit it. A `comskip.ini` in there is picked up too, if you want to tune [commercial detection](#commercial-detection-edl).
 
-> With Docker, mount the folder, never the files inside it. Docker creates a *directory* when you bind mount a file that isn't there yet, and then nothing can write to it.
-
 `url`, `username`, `password` and `downloadDir` are required. Everything else is optional:
 
 | Field | Default | What it does |
@@ -59,11 +57,17 @@ The same folder is where `scheduled.json` ends up, which holds any [scheduled re
 | `comskip` | `false` | Run [comskip](https://github.com/erikkaashoek/Comskip) on each recording to write a `.edl` commercial-skip file next to it. You can also flip this per-download at the confirm prompt. See [Commercial detection](#commercial-detection-edl). |
 | `watch` | — | Watch-mode rules. See [Subscriptions](#subscriptions). |
 
-## Interactive mode (pick a show)
+## Interactive mode
 
-This is the default: it prompts you to pick a channel and a show, then downloads it. If you'd rather have shows download automatically, see [Automatic downloads](#automatic-downloads-watch-mode) below.
+`manage` asks what you want to do:
 
-Pick whichever way to run suits you:
+- **Download a show** picks a channel, then a show from that channel's archive, and downloads it.
+- **Schedule a recording** picks a show that hasn't aired yet, for the watcher to download once it has. See [scheduled recordings](#scheduled-recordings).
+- **Manage scheduled recordings** shows what's lined up and lets you drop any of it.
+
+If you're going to run the watcher as well, skip the rest of this section and set up [automatic downloads](#automatic-downloads) instead. Interactive mode is the same image and the same folders, so that setup covers both and there's nothing to configure twice.
+
+Otherwise, pick whichever way to run suits you:
 
 <details>
 <summary><strong>Run with Docker</strong></summary>
@@ -74,7 +78,7 @@ There's a prebuilt image, so there's nothing to install. It's an interactive CLI
 docker run -it --rm \
   -v "$(pwd)/config:/config" \
   -v "$(pwd)/downloads:/catchup" \
-  ghcr.io/scottrobertson/timeshifter:latest
+  ghcr.io/scottrobertson/timeshifter:latest manage
 ```
 
 </details>
@@ -96,7 +100,7 @@ services:
 ```
 
 ```
-docker compose run --rm timeshifter
+docker compose run --rm timeshifter manage
 ```
 
 </details>
@@ -108,12 +112,12 @@ Needs Node 20+ and [ffmpeg](https://ffmpeg.org/download.html) on your PATH (used
 
 ```
 npm install
-npm start
+npm start manage
 ```
 
 </details>
 
-## Automatic downloads (watch mode)
+## Automatic downloads
 
 `watch` is a long-running process that re-checks the guide every few minutes and downloads whatever is due. It gets its work from two places, and either one on its own is fine:
 
@@ -121,6 +125,69 @@ npm start
 - **[Scheduled recordings](#scheduled-recordings)** are one-offs you pick out of the guide before they air. Good for a game that's on later in the week.
 
 Both download **after** the show has finished, not while it's on. Catchup is served by time, so the footage has to exist before it can be asked for.
+
+### Running the watcher
+
+Neither one happens without this. It's what notices a show is ready and does the download, so leave it running the way you would any other background service.
+
+It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. `config.json` is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of these.
+
+<details>
+<summary><strong>Run with Docker</strong></summary>
+
+It's a long-running process, so run it detached (no `-it`):
+
+```
+docker run -d --restart unless-stopped \
+  -v "$(pwd)/config:/config" \
+  -v "$(pwd)/downloads:/catchup" \
+  ghcr.io/scottrobertson/timeshifter:latest watch
+```
+
+For [interactive mode](#interactive-mode), the same image and mounts with `manage` instead of `watch`, and `-it --rm` instead of `-d`.
+
+</details>
+
+<details>
+<summary><strong>Run with Docker Compose</strong></summary>
+
+It's a long-running service, so use `up -d`:
+
+```yaml
+services:
+  timeshifter:
+    image: ghcr.io/scottrobertson/timeshifter:latest
+    command: watch
+    restart: unless-stopped
+    environment:
+      TZ: Europe/London # for the log timestamps; optional
+    volumes:
+      - ./config:/config
+      - ./downloads:/catchup
+```
+
+```
+docker compose up -d                         # the watcher
+docker compose run --rm timeshifter manage   # pick or schedule a show
+```
+
+That's the same service for both: passing `manage` replaces the `command: watch` in the file, so you get the menu instead of a second watcher. Leave the watcher up while you use it.
+
+</details>
+
+<details>
+<summary><strong>Run with npm</strong></summary>
+
+Needs Node 20+ and [ffmpeg](https://ffmpeg.org/download.html) on your PATH:
+
+```
+npm install
+npm start watch
+```
+
+`npm start manage` is [interactive mode](#interactive-mode), from the same install.
+
+</details>
 
 ### Subscriptions
 
@@ -161,86 +228,11 @@ Let timeshifter watch the guide and download anything that matches a set of rule
 
 For a one off, like a game that's on later in the week, pick it out of the guide before it airs and forget about it. You don't need any subscriptions in `config.json` for this, or even a `watch` block.
 
-**Nothing happens until the watcher is running.** It's the thing that notices the slot has passed and does the download, so leave it running as [below](#running-the-watcher). You can schedule a show while it's running and it'll be picked up on the next poll.
+You can schedule a show while [the watcher](#running-the-watcher) is running and it'll be picked up on the next poll.
 
-Setting one up is [interactive mode](#interactive-mode-pick-a-show) with `schedule` on the end, so pick whichever way to run suits you:
+Run [interactive mode](#interactive-mode) and choose **Schedule a recording**. You pick a channel, then a show from the ones still to come, and get the usual plan before you confirm, with the padding, filename, `.nfo` and comskip all adjustable. It has a `Ready` line as well: the show's end, your after-padding, and `readyGraceMinutes` if you've set one. That's the earliest the watcher will fetch it.
 
-<details>
-<summary><strong>Run with Docker</strong></summary>
-
-```
-docker run -it --rm \
-  -v "$(pwd)/config:/config" \
-  -v "$(pwd)/downloads:/catchup" \
-  ghcr.io/scottrobertson/timeshifter:latest schedule
-```
-
-</details>
-
-<details>
-<summary><strong>Run with Docker Compose</strong></summary>
-
-`run` starts a one-off container from a service you've already defined, with the same mounts, and what you pass replaces that service's `command`. It's fine to do this while the watcher is up, you just get a second container for as long as you're picking:
-
-```
-docker compose run --rm timeshifter schedule
-```
-
-</details>
-
-<details>
-<summary><strong>Run with npm</strong></summary>
-
-```
-npm start schedule
-```
-
-</details>
-
-That's where you set them up, see what's coming, and drop any you've changed your mind about:
-
-```
-  pending 2026-09-05 19:30  NASA TV  Artemis II Launch   ·  ready 2026-09-05 22:30
-  done    2026-09-01 14:00  NASA TV  Press Conference    ·  /catchup/NASA TV - Press Conference - 2026-09-01_14-00.ts
-
-? What do you want to do?
-> Schedule a show
-  Remove one
-  Quit
-```
-
-Choose "Schedule a show" and you pick a channel, then a show from the ones still to come.
-
-You can also get there from the normal flow: run `timeshifter` and shows that haven't started yet are in the list alongside the past ones, marked `[upcoming — schedule]`.
-
-```
-Pick a program (type to filter):
-> 2026-09-05 19:30-22:00 · Artemis II Launch   [upcoming — schedule]
-  2026-09-05 14:00-15:00 · Mission Briefing    [upcoming — schedule]
-  2026-09-04 09:00-10:30 · Crew Arrival        [now airing — partial]
-  2026-09-03 18:00-20:00 · Press Conference
-```
-
-Either way you get the usual plan, with a `Ready` line saying when it'll be downloaded. Adjust the padding, edit the filename, or flip the `.nfo` and comskip, then choose Schedule.
-
-```
-  Channel:  NASA TV
-  Program:  Artemis II Launch
-  Airs:     2026-09-05 19:30
-  Ends:     2026-09-05 22:00
-  Runtime:  150 min
-
-  Padding:  5 min before, 30 min after
-  Start:    2026-09-05 19:25
-  End:      2026-09-05 22:30
-  Length:   185 min
-  Ready:    2026-09-05 22:30
-  Saving:   /catchup/NASA TV - Artemis II Launch - 2026-09-05_19-30.ts
-  .nfo:     write
-  comskip:  run
-```
-
-`Ready` is the show's end plus your after-padding (plus `readyGraceMinutes`, if you've set one).
+**Manage scheduled recordings** in the same menu shows what's lined up, with what's still to come at the top, and lets you drop anything you've changed your mind about.
 
 Some things worth knowing:
 
@@ -248,62 +240,6 @@ Some things worth knowing:
 - If the download doesn't work, it's retried on every poll for 48 hours after the slot ended, then given up on and marked `expired`.
 - Padding, `.nfo` and comskip are saved per recording only if you changed them at the prompt. Leave them alone and they follow your `config.json`, so a later edit there still applies. Same for the filename: edit it and that exact name is used, otherwise it's built from `filenameTemplate` when the download happens.
 - Finished ones stay in the list for 30 days so you can see what happened, then the entry drops out of `scheduled.json`. That only tidies the list. The recording itself is never deleted.
-
-### Running the watcher
-
-This is the part that does the downloading, for subscriptions and scheduled recordings alike. It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. `config.json` is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of the commands below.
-
-Pick whichever way to run suits you:
-
-<details>
-<summary><strong>Run with Docker</strong></summary>
-
-It's a long-running process, so run it detached (no `-it`):
-
-```
-docker run -d --restart unless-stopped \
-  -v "$(pwd)/config:/config" \
-  -v "$(pwd)/downloads:/catchup" \
-  ghcr.io/scottrobertson/timeshifter:latest watch
-```
-
-</details>
-
-<details>
-<summary><strong>Run with Docker Compose</strong></summary>
-
-It's a long-running service, so use `up -d`:
-
-```yaml
-services:
-  timeshifter:
-    image: ghcr.io/scottrobertson/timeshifter:latest
-    command: watch
-    restart: unless-stopped
-    environment:
-      TZ: Europe/London # for the log timestamps; optional
-    volumes:
-      - ./config:/config
-      - ./downloads:/catchup
-```
-
-```
-docker compose up -d timeshifter
-```
-
-</details>
-
-<details>
-<summary><strong>Run with npm</strong></summary>
-
-Needs Node 20+ and [ffmpeg](https://ffmpeg.org/download.html) on your PATH:
-
-```
-npm install
-npm start watch
-```
-
-</details>
 
 ## Commercial detection (.edl)
 
