@@ -1,5 +1,6 @@
 import { select } from "@inquirer/prompts";
 import type { Config } from "./config.js";
+import { BACK, backable } from "./prompts.js";
 import { loadSchedule, removeScheduled, toProgram, type ScheduledRecording } from "./scheduled.js";
 import { readyAtLocal } from "./timeshift.js";
 
@@ -50,15 +51,20 @@ export async function manageScheduled(
     for (const recording of recordings) console.log(`  ${describe(recording)}`);
     console.log("");
 
-    const id = await select<string>({
-      message: "Remove which?",
-      choices: [
-        ...recordings.map((r) => ({ name: describe(r), value: r.id })),
-        { name: "Back", value: "" },
-      ],
-    });
+    const id = await backable((context) =>
+      select<string>(
+        {
+          message: "Remove which? (esc to go back)",
+          choices: [
+            ...recordings.map((r) => ({ name: describe(r), value: r.id })),
+            { name: "Back", value: "" },
+          ],
+        },
+        context,
+      ),
+    );
 
-    if (!id) {
+    if (id === BACK || !id) {
       if (recordings.some((r) => r.status === "pending")) {
         console.log(`\n  Run "timeshifter watch" to have these downloaded.`);
       }

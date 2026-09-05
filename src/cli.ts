@@ -13,9 +13,13 @@ import {
   syncNfo,
 } from "./timeshift.js";
 import { defaultPlan, planOverrides, reviewPlan, type PlanContext } from "./plan.js";
+import { BACK, backable, type Back } from "./prompts.js";
 import { manageScheduled } from "./schedule-cli.js";
 import { addScheduled, newRecording, snapshotOf } from "./scheduled.js";
 import { loadWatchConfig } from "./subscriptions.js";
+
+/** Whether a step got to the end, or esc was pressed and the previous list should come back. */
+type StepResult = "done" | "back";
 
 export function formatLocalRange(startLocal: string, endLocal: string): string {
   // "YYYY-MM-DD HH:MM-HH:MM", but if the range ends on a different day, show the
@@ -30,34 +34,40 @@ export function formatProgramTimeRange(program: EpgProgram): string {
   return formatLocalRange(program.startLocal, program.endLocal);
 }
 
-async function pickChannel(channels: Channel[]): Promise<Channel> {
+async function pickChannel(channels: Channel[]): Promise<Channel | Back> {
   // Channels are grouped by category (provider order); show the group inline.
   const label = (c: Channel): string =>
     c.group
       ? `${c.group} · ${c.name}  (${c.archiveDays}d archive)`
       : `${c.name}  (${c.archiveDays}d archive)`;
 
-  const index = await search<number>({
-    message: "Search for a channel (type to filter):",
-    source: async (input) => {
-      const term = (input ?? "").toLowerCase();
-      return channels
-        .map((channel, i) => ({ channel, i }))
-        .filter(
-          ({ channel }) =>
-            !term || `${channel.group ?? ""} ${channel.name}`.toLowerCase().includes(term),
-        )
-        .map(({ channel, i }) => ({ name: label(channel), value: i }));
-    },
-  });
+  const index = await backable((context) =>
+    search<number>(
+      {
+        message: "Search for a channel (type to filter, esc to go back):",
+        source: async (input) => {
+          const term = (input ?? "").toLowerCase();
+          return channels
+            .map((channel, i) => ({ channel, i }))
+            .filter(
+              ({ channel }) =>
+                !term || `${channel.group ?? ""} ${channel.name}`.toLowerCase().includes(term),
+            )
+            .map(({ channel, i }) => ({ name: label(channel), value: i }));
+        },
+      },
+      context,
+    ),
+  );
+  if (index === BACK) return BACK;
   return channels[index]!;
 }
 
 async function pickProgram(
   programs: EpgProgram[],
   timezone: string | undefined,
-  message = "Pick a program (type to filter):",
-): Promise<EpgProgram> {
+  message = "Pick a program (type to filter, esc to go back):",
+): Promise<EpgProgram | Back> {
   const now = Date.now();
   const tz = timezone ? ` ${timezone}` : "";
   const choices = programs.map((program, index) => {
@@ -71,14 +81,20 @@ async function pickProgram(
     };
   });
 
-  const index = await search<number>({
-    message,
-    source: async (input) => {
-      const term = (input ?? "").toLowerCase();
-      if (!term) return choices;
-      return choices.filter((choice) => choice.name.toLowerCase().includes(term));
-    },
-  });
+  const index = await backable((context) =>
+    search<number>(
+      {
+        message,
+        source: async (input) => {
+          const term = (input ?? "").toLowerCase();
+          if (!term) return choices;
+          return choices.filter((choice) => choice.name.toLowerCase().includes(term));
+        },
+      },
+      context,
+    ),
+  );
+  if (index === BACK) return BACK;
   return programs[index]!;
 }
 
@@ -112,20 +128,28 @@ export async function scheduleOne(
     return;
   }
 
-  const channel = await pickChannel(channels);
-  const upcoming = upcomingSoonestFirst(await source.programs(channel), Date.now());
+  for (;;) {
+    const channel = await pickChannel(channels);
+    if (channel === BACK) return;
 
-  if (upcoming.length === 0) {
-    console.log(`The guide has nothing coming up for ${channel.name}.`);
-    return;
+    const upcoming = upcomingSoonestFirst(await source.programs(channel), Date.now());
+    if (upcoming.length === 0) {
+      console.log(`The guide has nothing coming up for ${channel.name}.`);
+      continue;
+    }
+
+    for (;;) {
+      const program = await pickProgram(
+        upcoming,
+        source.timezone,
+        "Pick a show to record (type to filter, esc to go back):",
+      );
+      if (program === BACK) break;
+
+      const step = await scheduleUpcoming(config, source, channel, program, readyGraceMinutes);
+      if (step === "done") return;
+    }
   }
-
-  const program = await pickProgram(
-    upcoming,
-    source.timezone,
-    "Pick a show to record (type to filter):",
-  );
-  await scheduleUpcoming(config, source, channel, program, readyGraceMinutes);
 }
 
 async function downloadOne(config: Config, source: Source): Promise<void> {
@@ -136,15 +160,24 @@ async function downloadOne(config: Config, source: Source): Promise<void> {
   }
   console.log(`${channels.length} channels with an archive available.\n`);
 
-  const channel = await pickChannel(channels);
-  const pickable = downloadableNow(await source.programs(channel), Date.now());
+  for (;;) {
+    const channel = await pickChannel(channels);
+    if (channel === BACK) return;
 
-  if (pickable.length === 0) {
-    console.log(`Nothing in the archive for ${channel.name}.`);
-    return;
+    const pickable = downloadableNow(await source.programs(channel), Date.now());
+    if (pickable.length === 0) {
+      console.log(`Nothing in the archive for ${channel.name}.`);
+      continue;
+    }
+
+    for (;;) {
+      const program = await pickProgram(pickable, source.timezone);
+      if (program === BACK) break;
+
+      const step = await downloadNow(config, source, channel, program);
+      if (step === "done") return;
+    }
   }
-
-  await downloadNow(config, source, channel, await pickProgram(pickable, source.timezone));
 }
 
 /**
@@ -157,7 +190,7 @@ async function scheduleUpcoming(
   channel: Channel,
   program: EpgProgram,
   readyGraceMinutes: number,
-): Promise<void> {
+): Promise<StepResult> {
   const context: PlanContext = {
     config,
     channel,
@@ -167,10 +200,14 @@ async function scheduleUpcoming(
     readyGraceMinutes,
   };
 
-  const plan = await reviewPlan(context, { message: "Schedule this?", confirm: "Schedule" });
+  const plan = await reviewPlan(context, {
+    message: "Schedule this? (esc to go back)",
+    confirm: "Schedule",
+  });
+  if (plan === BACK) return "back";
   if (!plan) {
     console.log("Skipped.");
-    return;
+    return "done";
   }
 
   addScheduled(
@@ -184,6 +221,7 @@ async function scheduleUpcoming(
   const ready = readyAtLocal(program, plan.paddingAfter + readyGraceMinutes).slice(0, 16);
   console.log(`\n  Scheduled. Watch mode will download it after ${ready}.`);
   console.log(`  Run "timeshifter watch" if it isn't already running.`);
+  return "done";
 }
 
 async function downloadNow(
@@ -191,7 +229,7 @@ async function downloadNow(
   source: Source,
   channel: Channel,
   program: EpgProgram,
-): Promise<void> {
+): Promise<StepResult> {
   const plan = await reviewPlan(
     {
       config,
@@ -202,21 +240,28 @@ async function downloadNow(
       readyGraceMinutes: 0,
     },
     {
-      message: "Download this?",
+      message: "Download this? (esc to go back)",
       confirm: "Download",
       check: async ({ filename }) => {
         if (!existsSync(path.join(config.downloadDir, filename))) return true;
         // Saying no goes back to the options, so you can rename it instead.
-        return confirm({
-          message: `${filename} already exists. Overwrite it?`,
-          default: false,
-        });
+        const overwrite = await backable((context) =>
+          confirm(
+            {
+              message: `${filename} already exists. Overwrite it?`,
+              default: false,
+            },
+            context,
+          ),
+        );
+        return overwrite === true;
       },
     },
   );
+  if (plan === BACK) return "back";
   if (!plan) {
     console.log("Skipped.");
-    return;
+    return "done";
   }
 
   const window = recordingWindow(program, plan.paddingBefore, plan.paddingAfter);
@@ -254,6 +299,7 @@ async function downloadNow(
   }
 
   console.log(`\n  Saved: ${result.outputPath}`);
+  return "done";
 }
 
 export async function run(config: Config): Promise<void> {

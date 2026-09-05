@@ -1,6 +1,7 @@
 import { input, number, select } from "@inquirer/prompts";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram } from "./source.js";
+import { BACK, backable, type Back } from "./prompts.js";
 import { outputFilename, plannedWindow, readyAtLocal, recordingWindow } from "./timeshift.js";
 
 // How a recording will be made: the filename, the padding, and whether the .nfo
@@ -143,12 +144,12 @@ export function planLines(context: PlanContext, plan: RecordingPlan): string[] {
 
 /**
  * Show the plan and let someone change it until they go ahead. Gives back what
- * they settled on, or nothing if they cancelled.
+ * they settled on, nothing if they cancelled, or BACK if they pressed esc.
  */
 export async function reviewPlan(
   context: PlanContext,
   action: PlanAction,
-): Promise<RecordingPlan | undefined> {
+): Promise<RecordingPlan | Back | undefined> {
   const plan = defaultPlan(context);
   const print = (): void => console.log(planLines(context, plan).join("\n"));
 
@@ -156,24 +157,30 @@ export async function reviewPlan(
 
   // The go-ahead is the first option, so the common case is a single Enter.
   for (;;) {
-    const choice = await select({
-      message: action.message,
-      choices: [
-        { name: action.confirm, value: "confirm" },
-        { name: "Adjust padding", value: "padding" },
-        { name: "Edit filename", value: "filename" },
+    const choice = await backable((promptContext) =>
+      select(
         {
-          name: `Write .nfo:  ${plan.writeNfo ? "on" : "off"}  (select to turn ${plan.writeNfo ? "off" : "on"})`,
-          value: "toggle-nfo",
+          message: action.message,
+          choices: [
+            { name: action.confirm, value: "confirm" },
+            { name: "Adjust padding", value: "padding" },
+            { name: "Edit filename", value: "filename" },
+            {
+              name: `Write .nfo:  ${plan.writeNfo ? "on" : "off"}  (select to turn ${plan.writeNfo ? "off" : "on"})`,
+              value: "toggle-nfo",
+            },
+            {
+              name: `Run comskip: ${plan.comskip ? "on" : "off"}  (select to turn ${plan.comskip ? "off" : "on"})`,
+              value: "toggle-comskip",
+            },
+            { name: "Cancel", value: "cancel" },
+          ],
         },
-        {
-          name: `Run comskip: ${plan.comskip ? "on" : "off"}  (select to turn ${plan.comskip ? "off" : "on"})`,
-          value: "toggle-comskip",
-        },
-        { name: "Cancel", value: "cancel" },
-      ],
-    });
+        promptContext,
+      ),
+    );
 
+    if (choice === BACK) return BACK;
     if (choice === "cancel") return undefined;
 
     if (choice === "confirm") {
@@ -182,26 +189,36 @@ export async function reviewPlan(
     }
 
     if (choice === "filename") {
-      plan.filename = (
-        await input({
-          message: "Filename:",
-          default: plan.filename,
-          prefill: "editable",
-          validate: (v) => v.trim().length > 0 || "Enter a filename.",
-        })
-      ).trim();
+      const filename = await backable((promptContext) =>
+        input(
+          {
+            message: "Filename:",
+            default: plan.filename,
+            prefill: "editable",
+            validate: (v) => v.trim().length > 0 || "Enter a filename.",
+          },
+          promptContext,
+        ),
+      );
+      if (filename !== BACK) plan.filename = filename.trim();
     } else if (choice === "toggle-nfo") {
       plan.writeNfo = !plan.writeNfo;
     } else if (choice === "toggle-comskip") {
       plan.comskip = !plan.comskip;
     } else if (choice === "padding") {
       console.log("\nMinutes to add at each end. A negative number records less.");
-      plan.paddingBefore = Math.round(
-        (await number({ message: "Before:", default: plan.paddingBefore })) ?? plan.paddingBefore,
+      // Esc on the first question leaves the padding alone, rather than changing
+      // one end and not the other.
+      const before = await backable((promptContext) =>
+        number({ message: "Before:", default: plan.paddingBefore }, promptContext),
       );
-      plan.paddingAfter = Math.round(
-        (await number({ message: "After:", default: plan.paddingAfter })) ?? plan.paddingAfter,
-      );
+      if (before !== BACK) {
+        plan.paddingBefore = Math.round(before ?? plan.paddingBefore);
+        const after = await backable((promptContext) =>
+          number({ message: "After:", default: plan.paddingAfter }, promptContext),
+        );
+        if (after !== BACK) plan.paddingAfter = Math.round(after ?? plan.paddingAfter);
+      }
     }
 
     print();
