@@ -42,4 +42,11 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
+# config.json, scheduled.json and comskip.ini are read from here, so mounting one
+# folder is all it takes. Mounting them a file at a time is what leaves you with a
+# directory where scheduled.json should be, because Docker creates one when the
+# file isn't there yet.
+ENV TIMESHIFTER_CONFIG_DIR=/config
+RUN mkdir -p /config
+
 ENTRYPOINT ["/usr/bin/tini", "--", "node", "dist/index.js"]

@@ -1,4 +1,4 @@
-import { readConfigFile, DEFAULT_CONFIG_FILE } from "./config.js";
+import { readConfigFile, defaultConfigFile } from "./config.js";
 import type { Channel } from "./source.js";
 
 /** A rule describing which programs to download automatically in watch mode. */
@@ -142,7 +142,7 @@ function parseSubscription(item: unknown, index: number): Subscription {
  * message. Subscriptions are optional, because watch mode also exists to pick up
  * one-off scheduled recordings, which live outside the config file.
  */
-export function loadWatchConfig(file = DEFAULT_CONFIG_FILE): WatchConfig {
+export function loadWatchConfig(file = defaultConfigFile()): WatchConfig {
   const config = readConfigFile(file);
 
   const watch = config.watch ?? {};

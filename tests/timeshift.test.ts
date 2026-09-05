@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   buildNfo,
   buildTimeshiftUrl,
+  customComskipIni,
   download,
   edlPathFor,
   ensureEdl,
@@ -547,6 +548,31 @@ describe("edlPathFor", () => {
       edlPathFor("/catchup/NASA TV/Launch - 2024-03-10_12-00.ts"),
       "/catchup/NASA TV/Launch - 2024-03-10_12-00.edl",
     );
+  });
+});
+
+describe("customComskipIni", () => {
+  it("uses COMSKIP_INI when it's set", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const ini = path.join(dir, "mine.ini");
+    await writeFile(ini, "");
+    assert.equal(customComskipIni({ COMSKIP_INI: ini }, "nope.ini"), ini);
+  });
+
+  it("uses a comskip.ini sitting next to config.json", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-"));
+    const ini = path.join(dir, "comskip.ini");
+    await writeFile(ini, "");
+    assert.equal(customComskipIni({}, ini), ini);
+  });
+
+  it("gives nothing when there's neither, so the built-in default is used", () => {
+    assert.equal(customComskipIni({}, "/no/such/comskip.ini"), undefined);
+  });
+
+  it("makes a relative path absolute, because comskip runs in the download folder", () => {
+    const relative = customComskipIni({ COMSKIP_INI: "my.ini" });
+    assert.equal(relative, path.resolve("my.ini"));
   });
 });
 

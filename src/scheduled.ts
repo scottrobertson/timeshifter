@@ -1,16 +1,18 @@
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { configPath, readTextFile } from "./files.js";
 import type { EpgProgram } from "./source.js";
 
 // One-off recordings you picked out of the guide before they aired. Each one is
 // a timer: watch mode records the time slot that was picked, once that slot has
 // passed, then marks it done.
 //
-// These live in their own file rather than in config.json because config.json is
-// mounted read-only in the Docker setups, and because a generated list doesn't
-// belong in a file you hand-edit.
+// These live in their own file rather than in config.json because a generated
+// list doesn't belong in a file you hand-edit.
 
-export const DEFAULT_SCHEDULE_FILE = "scheduled.json";
+export function defaultScheduleFile(): string {
+  return configPath("scheduled.json");
+}
 
 /** How long a finished recording stays in the file before it's tidied away. */
 const KEEP_FINISHED_DAYS = 30;
@@ -155,12 +157,13 @@ function parseRecording(value: unknown, index: number): ScheduledRecording {
 }
 
 /** Everything in the schedule file. An absent file just means nothing is scheduled. */
-export function loadSchedule(file = DEFAULT_SCHEDULE_FILE): ScheduledRecording[] {
+export function loadSchedule(file = defaultScheduleFile()): ScheduledRecording[] {
   if (!existsSync(file)) return [];
 
+  const raw = readTextFile(file);
   let data: unknown;
   try {
-    data = JSON.parse(readFileSync(file, "utf8"));
+    data = JSON.parse(raw);
   } catch (err) {
     fail(`isn't valid JSON: ${(err as Error).message}`);
   }
@@ -182,7 +185,7 @@ export function loadSchedule(file = DEFAULT_SCHEDULE_FILE): ScheduledRecording[]
  */
 export function saveSchedule(
   recordings: ScheduledRecording[],
-  file = DEFAULT_SCHEDULE_FILE,
+  file = defaultScheduleFile(),
 ): void {
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, `${JSON.stringify({ recordings }, null, 2)}\n`);
@@ -226,7 +229,7 @@ export function newRecording(
 
 export function addScheduled(
   recording: ScheduledRecording,
-  file = DEFAULT_SCHEDULE_FILE,
+  file = defaultScheduleFile(),
 ): ScheduledRecording[] {
   return mutate(file, (recordings) => [...recordings, recording]);
 }
@@ -234,14 +237,14 @@ export function addScheduled(
 export function updateScheduled(
   id: string,
   patch: Partial<ScheduledRecording>,
-  file = DEFAULT_SCHEDULE_FILE,
+  file = defaultScheduleFile(),
 ): ScheduledRecording[] {
   return mutate(file, (recordings) =>
     recordings.map((r) => (r.id === id ? { ...r, ...patch } : r)),
   );
 }
 
-export function removeScheduled(id: string, file = DEFAULT_SCHEDULE_FILE): ScheduledRecording[] {
+export function removeScheduled(id: string, file = defaultScheduleFile()): ScheduledRecording[] {
   return mutate(file, (recordings) => recordings.filter((r) => r.id !== id));
 }
 

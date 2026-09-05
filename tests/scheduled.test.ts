@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { EpgProgram } from "../src/source.js";
@@ -89,6 +89,12 @@ describe("loadSchedule", () => {
     const file = await tempFile();
     await writeFile(file, "{ nope");
     assert.throws(() => loadSchedule(file), /scheduled\.json isn't valid JSON/);
+  });
+
+  it("says so when scheduled.json is a directory", async () => {
+    const file = await tempFile();
+    await mkdir(file);
+    assert.throws(() => loadSchedule(file), /is a directory, not a file/);
   });
 
   it("throws on an unknown status", async () => {

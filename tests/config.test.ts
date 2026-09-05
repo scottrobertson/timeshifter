@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadConfig } from "../src/config.js";
@@ -74,7 +74,25 @@ describe("loadConfig", () => {
     assert.throws(() => loadConfig(file), /isn't valid JSON/);
   });
 
-  it("throws when the file is missing", () => {
-    assert.throws(() => loadConfig("/no/such/config.json"), /Couldn't read/);
+  it("writes a starter config to fill in when there isn't one yet", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "timeshifter-config-"));
+    const file = path.join(dir, "config.json");
+
+    assert.throws(() => loadConfig(file), /starter one has been written/);
+
+    const written = JSON.parse(readFileSync(file, "utf8"));
+    assert.equal(written.url, "http://my-provider.com:8080");
+    assert.equal(written.downloadDir, "/catchup");
+  });
+
+  it("says it's missing when there's nowhere to write a starter one", () => {
+    assert.throws(() => loadConfig("/no/such/dir/config.json"), /Couldn't find/);
+  });
+
+  it("says so when config.json is a directory", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "timeshifter-config-"));
+    const file = path.join(dir, "config.json");
+    mkdirSync(file);
+    assert.throws(() => loadConfig(file), /is a directory, not a file/);
   });
 });

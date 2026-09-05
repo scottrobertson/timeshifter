@@ -101,7 +101,7 @@ describe("loadWatchConfig", () => {
   });
 
   it("throws when the file is missing", () => {
-    assert.throws(() => loadWatchConfig("/no/such/config.json"), /Couldn't read/);
+    assert.throws(() => loadWatchConfig("/no/such/dir/config.json"), /Couldn't find/);
   });
 
   it("throws on invalid JSON", async () => {

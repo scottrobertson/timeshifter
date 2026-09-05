@@ -3,6 +3,7 @@ dist/
 downloads/
 *.log
 .DS_Store
+config/
 config.json
 scheduled.json
 scheduled.json.tmp

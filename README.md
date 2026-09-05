@@ -27,7 +27,7 @@ For now it works with Xtream Codes providers (the most common kind, where you lo
 
 ## Setup
 
-All the configuration lives in a single `config.json` in the working directory. Copy the example and fill in your provider's base URL (including port), username, password, and where to save downloads:
+Everything timeshifter needs lives in one folder: `config` in the directory you run it from, or `/config` in the Docker image, which is the folder you mount there. Run it once and it writes a starter `config.json` in that folder for you to fill in, with your provider's base URL (including port), username, password, and where to save downloads:
 
 ```json
 {
@@ -38,15 +38,11 @@ All the configuration lives in a single `config.json` in the working directory. 
 }
 ```
 
-If you've cloned the repo, run `cp config.example.json config.json` and edit it.
+If you've cloned the repo, `mkdir config && cp config.example.json config/config.json` gets you there with every optional field filled in as well.
 
-There's a second file, `scheduled.json`, which holds any [scheduled recordings](#scheduled-recordings). It's written for you, so you never need to edit it, but if you're running with Docker, create it before the first run:
+The same folder is where `scheduled.json` ends up, which holds any [scheduled recordings](#scheduled-recordings). It's written for you, so you never need to create or edit it. A `comskip.ini` in there is picked up too, if you want to tune [commercial detection](#commercial-detection-edl).
 
-```
-touch scheduled.json
-```
-
-Docker creates a *directory* when you bind mount a file that isn't there yet, and then nothing can write to it.
+> With Docker, mount the folder, never the files inside it. Docker creates a *directory* when you bind mount a file that isn't there yet, and then nothing can write to it.
 
 `url`, `username`, `password` and `downloadDir` are required. Everything else is optional:
 
@@ -72,12 +68,11 @@ Pick whichever way to run suits you:
 <details>
 <summary><strong>Run with Docker</strong></summary>
 
-There's a prebuilt image, so there's nothing to install. It's an interactive CLI, so run it with `-it`, mount your `config.json` and `scheduled.json`, and mount a folder for the downloads (set `downloadDir` in the config to wherever you mount it, e.g. `/catchup`):
+There's a prebuilt image, so there's nothing to install. It's an interactive CLI, so run it with `-it`, mount a folder at `/config` for `config.json` and `scheduled.json`, and mount a folder for the downloads (set `downloadDir` in the config to wherever you mount it, e.g. `/catchup`):
 
 ```
 docker run -it --rm \
-  -v "$(pwd)/config.json:/app/config.json:ro" \
-  -v "$(pwd)/scheduled.json:/app/scheduled.json" \
+  -v "$(pwd)/config:/config" \
   -v "$(pwd)/downloads:/catchup" \
   ghcr.io/scottrobertson/timeshifter:latest
 ```
@@ -94,8 +89,7 @@ services:
   timeshifter:
     image: ghcr.io/scottrobertson/timeshifter:latest
     volumes:
-      - ./config.json:/app/config.json:ro
-      - ./scheduled.json:/app/scheduled.json
+      - ./config:/config
       - ./downloads:/catchup
     stdin_open: true
     tty: true
@@ -176,8 +170,7 @@ Setting one up is [interactive mode](#interactive-mode-pick-a-show) with `schedu
 
 ```
 docker run -it --rm \
-  -v "$(pwd)/config.json:/app/config.json:ro" \
-  -v "$(pwd)/scheduled.json:/app/scheduled.json" \
+  -v "$(pwd)/config:/config" \
   -v "$(pwd)/downloads:/catchup" \
   ghcr.io/scottrobertson/timeshifter:latest schedule
 ```
@@ -187,7 +180,7 @@ docker run -it --rm \
 <details>
 <summary><strong>Run with Docker Compose</strong></summary>
 
-`run` starts a one-off container from a service you've already defined, with the same mounts. What you pass replaces that service's `command`:
+`run` starts a one-off container from a service you've already defined, with the same mounts, and what you pass replaces that service's `command`. It's fine to do this while the watcher is up, you just get a second container for as long as you're picking:
 
 ```
 docker compose run --rm timeshifter schedule
@@ -269,8 +262,7 @@ It's a long-running process, so run it detached (no `-it`):
 
 ```
 docker run -d --restart unless-stopped \
-  -v "$(pwd)/config.json:/app/config.json:ro" \
-  -v "$(pwd)/scheduled.json:/app/scheduled.json" \
+  -v "$(pwd)/config:/config" \
   -v "$(pwd)/downloads:/catchup" \
   ghcr.io/scottrobertson/timeshifter:latest watch
 ```
@@ -291,8 +283,7 @@ services:
     environment:
       TZ: Europe/London # for the log timestamps; optional
     volumes:
-      - ./config.json:/app/config.json:ro
-      - ./scheduled.json:/app/scheduled.json
+      - ./config:/config
       - ./downloads:/catchup
 ```
 
@@ -333,7 +324,7 @@ Set `"comskip": true` to run [comskip](https://github.com/erikkaashoek/Comskip) 
 - This is the global default. Each subscription can override it with its own `comskip` (see [Subscriptions](#subscriptions)), so you can leave it on for most and turn it off on the odd one, or the other way around. In interactive mode you can also flip it on or off per download at the confirm prompt.
 - The Docker image bundles comskip, so `"comskip": true` works out of the box. Running with Node instead, install comskip yourself and either put it on your `PATH` or point `COMSKIP_PATH` at the binary.
 - `COMSKIP_PATH` overrides which comskip binary is used, if you want a specific build.
-- Detection runs with comskip's defaults. To tune it, point `COMSKIP_INI` at your own `comskip.ini`; otherwise a minimal built-in one is used that just turns on `.edl` output.
+- Detection runs with comskip's defaults, from a minimal built-in `comskip.ini` that just turns on `.edl` output. To tune it, put your own `comskip.ini` next to `config.json` and it's used instead. `COMSKIP_INI` points at one somewhere else, if you'd rather.
 
 ## Notes / troubleshooting
 
@@ -346,6 +337,7 @@ Set `"comskip": true` to run [comskip](https://github.com/erikkaashoek/Comskip) 
   - Set `filenameStrip` (globally or per subscription) to remove junk the EPG adds to titles, e.g. `["ᴸᶦᵛᵉ"]`. It only affects the filename.
 - **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `"setAiredTime": false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
 - **.nfo metadata:** a `.nfo` file is written next to each recording with the title, description, air date and runtime, so Emby, Jellyfin and Kodi use that instead of guessing from the filename. When the guide prefixes the description with a season/episode marker (e.g. `S21 E8`), that's pulled out into proper season and episode fields. In watch mode it's also created or refreshed for recordings you already have. Set `"writeNfo": false` to turn it off. In interactive mode you can also flip it on or off per download at the confirm prompt.
+- **Config folder:** `config` in the directory you run from, or `/config` in the Docker image. Set `TIMESHIFTER_CONFIG_DIR` to put `config.json`, `scheduled.json` and `comskip.ini` somewhere else.
 - **Timezone:** set the `TZ` environment variable (e.g. `Europe/London`) to control the timezone of the watch-mode log timestamps; it defaults to UTC. The Docker image bundles the zone data. Guide and recording times are unaffected; they always use the provider's own local time, which is what the endpoint expects, so no timezone conversion happens.
 
 ## Built with Claude

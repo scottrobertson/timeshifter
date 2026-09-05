@@ -7,6 +7,7 @@ import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Config } from "./config.js";
+import { configPath } from "./files.js";
 import type { Channel, EpgProgram, RecordingWindow } from "./source.js";
 
 /**
@@ -513,9 +514,22 @@ output_txt=0
 output_default=0
 `;
 
-/** The comskip.ini to run with: the user's COMSKIP_INI, or a temp default. */
+/**
+ * Your own comskip.ini, if you have one. COMSKIP_INI wins, otherwise it's picked
+ * up from the config folder, the same as config.json. Absolute, because comskip
+ * runs in the download folder and would otherwise look for it there.
+ */
+export function customComskipIni(
+  env: NodeJS.ProcessEnv = process.env,
+  file: string = configPath("comskip.ini"),
+): string | undefined {
+  if (env.COMSKIP_INI) return path.resolve(env.COMSKIP_INI);
+  return existsSync(file) ? path.resolve(file) : undefined;
+}
+
+/** The comskip.ini to run with: your own, or a temp default. */
 async function comskipIni(): Promise<{ path: string; cleanup: () => Promise<void> }> {
-  const custom = process.env.COMSKIP_INI;
+  const custom = customComskipIni();
   if (custom) return { path: custom, cleanup: async () => {} };
   const dir = await mkdtemp(path.join(tmpdir(), "comskip-"));
   const iniPath = path.join(dir, "comskip.ini");

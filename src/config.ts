@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { configPath, readTextFile } from "./files.js";
 
 export type TimeshiftMode = "path" | "php";
 
@@ -25,7 +27,17 @@ export interface Config {
   comskip: boolean;
 }
 
-export const DEFAULT_CONFIG_FILE = "config.json";
+export function defaultConfigFile(): string {
+  return configPath("config.json");
+}
+
+/** Enough to start from. Everything else has a default and is documented in the README. */
+const STARTER_CONFIG = {
+  url: "http://my-provider.com:8080",
+  username: "your-username",
+  password: "your-password",
+  downloadDir: "/catchup",
+};
 
 const DEFAULT_FILENAME_TEMPLATE = "{channel} - {title} - {datetime}.{ext}";
 // Many panels drop connections from clients that don't look like a real player,
@@ -36,16 +48,27 @@ function fail(detail: string): never {
   throw new Error(`config.json ${detail}`);
 }
 
-/** Read and JSON-parse the config file, with friendly errors. Shared with subscriptions. */
-export function readConfigFile(file = DEFAULT_CONFIG_FILE): Record<string, unknown> {
-  let raw: string;
+/**
+ * There's nothing to run without a config, so write a starter one to fill in
+ * rather than making someone find the example first.
+ */
+function missingConfig(file: string): never {
   try {
-    raw = readFileSync(file, "utf8");
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `${JSON.stringify(STARTER_CONFIG, null, 2)}\n`, { flag: "wx" });
   } catch {
+    // Nowhere to write it (a read-only mount, say), so just say it's missing.
     throw new Error(
-      `Couldn't read ${file}. Copy config.example.json to config.json and fill in your provider details.`,
+      `Couldn't find ${file}. Copy config.example.json to config.json and fill in your provider details.`,
     );
   }
+  throw new Error(`${file} didn't exist, so a starter one has been written. Fill it in and run again.`);
+}
+
+/** Read and JSON-parse the config file, with friendly errors. Shared with subscriptions. */
+export function readConfigFile(file = defaultConfigFile()): Record<string, unknown> {
+  if (!existsSync(file)) missingConfig(file);
+  const raw = readTextFile(file);
 
   let data: unknown;
   try {
@@ -104,7 +127,7 @@ function optionalBoolean(obj: Record<string, unknown>, field: string, fallback: 
   return value;
 }
 
-export function loadConfig(file = DEFAULT_CONFIG_FILE): Config {
+export function loadConfig(file = defaultConfigFile()): Config {
   const obj = readConfigFile(file);
 
   const timeshiftMode = (optionalString(obj, "timeshiftMode", "path")) as TimeshiftMode;

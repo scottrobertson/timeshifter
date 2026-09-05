@@ -20,7 +20,7 @@ import {
   type WatchConfig,
 } from "./subscriptions.js";
 import {
-  DEFAULT_SCHEDULE_FILE,
+  defaultScheduleFile,
   loadSchedule,
   pruneSchedule,
   saveSchedule,
@@ -169,7 +169,7 @@ export async function pollOnce(
   watch: WatchConfig,
   dryRun: boolean,
   now: number = Date.now(),
-  scheduleFile: string = DEFAULT_SCHEDULE_FILE,
+  scheduleFile: string = defaultScheduleFile(),
 ): Promise<PollResult> {
   const channels = await source.archiveChannels();
   const results: SubscriptionPollResult[] = [];
