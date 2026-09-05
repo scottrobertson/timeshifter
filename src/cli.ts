@@ -1,26 +1,20 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { search, confirm, select, number, input } from "@inquirer/prompts";
+import { search, confirm } from "@inquirer/prompts";
 import type { Config } from "./config.js";
 import type { Channel, EpgProgram, Source } from "./source.js";
 import { XtreamSource } from "./xtream.js";
 import {
   download,
   ensureEdl,
-  outputFilename,
-  plannedWindow,
   readyAtLocal,
   recordingWindow,
   setFileTime,
   syncNfo,
 } from "./timeshift.js";
+import { defaultPlan, planOverrides, reviewPlan, type PlanContext } from "./plan.js";
 import { addScheduled, newRecording, snapshotOf } from "./scheduled.js";
 import { loadWatchConfig } from "./subscriptions.js";
-
-function formatProgramTime(program: EpgProgram): string {
-  // Trim "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM".
-  return program.startLocal.slice(0, 16);
-}
 
 export function formatLocalRange(startLocal: string, endLocal: string): string {
   // "YYYY-MM-DD HH:MM-HH:MM", but if the range ends on a different day, show the
@@ -177,96 +171,30 @@ async function scheduleUpcoming(
   program: EpgProgram,
   readyGraceMinutes: number,
 ): Promise<void> {
-  const programMinutes = Math.round(
-    (program.end.getTime() - program.start.getTime()) / 60_000,
-  );
-
-  let before = config.paddingBefore;
-  let after = config.paddingAfter;
-  let writeNfo = config.writeNfo;
-  let comskip = config.comskip;
-
-  const printPlan = (): void => {
-    const window = plannedWindow(program, before, after);
-    const ready = readyAtLocal(program, after + readyGraceMinutes);
-    const padding = before || after ? `${before} min before, ${after} min after` : "none";
-    const tz = source.timezone ? ` ${source.timezone}` : "";
-    console.log("");
-    console.log(`  Channel:  ${channel.name}`);
-    console.log(`  Program:  ${program.title}`);
-    console.log(`  Airs:     ${program.startLocal.slice(0, 16)}${tz}`);
-    console.log(`  Ends:     ${program.endLocal.slice(0, 16)}${tz}`);
-    console.log(`  Runtime:  ${programMinutes} min`);
-    console.log("");
-    console.log(`  Padding:  ${padding}`);
-    console.log(`  Start:    ${window.startLocal.slice(0, 16)}${tz}`);
-    console.log(`  End:      ${window.endLocal.slice(0, 16)}${tz}`);
-    console.log(`  Length:   ${window.minutes} min`);
-    console.log(`  Ready:    ${ready.slice(0, 16)}${tz}`);
-    // The guide can move the show before it airs, and the name follows the guide.
-    console.log(`  Saving:   ${config.downloadDir}/${outputFilename(config, channel, program)}`);
-    console.log(`  .nfo:     ${writeNfo ? "write" : "skip"}`);
-    console.log(`  comskip:  ${comskip ? "run" : "skip"}`);
-    console.log("");
+  const context: PlanContext = {
+    config,
+    channel,
+    program,
+    timezone: source.timezone,
+    upcoming: true,
+    readyGraceMinutes,
   };
 
-  printPlan();
-
-  for (;;) {
-    const action = await select({
-      message: "Schedule this?",
-      choices: [
-        { name: "Schedule", value: "schedule" },
-        { name: "Adjust padding", value: "adjust" },
-        {
-          name: `Write .nfo:  ${writeNfo ? "on" : "off"}  (select to turn ${writeNfo ? "off" : "on"})`,
-          value: "toggle-nfo",
-        },
-        {
-          name: `Run comskip: ${comskip ? "on" : "off"}  (select to turn ${comskip ? "off" : "on"})`,
-          value: "toggle-comskip",
-        },
-        { name: "Cancel", value: "cancel" },
-      ],
-    });
-
-    if (action === "cancel") {
-      console.log("Skipped.");
-      return;
-    }
-    if (action === "schedule") break;
-
-    if (action === "toggle-nfo") {
-      writeNfo = !writeNfo;
-      printPlan();
-      continue;
-    }
-    if (action === "toggle-comskip") {
-      comskip = !comskip;
-      printPlan();
-      continue;
-    }
-
-    console.log("\nMinutes to add at each end. A negative number records less.");
-    before = Math.round((await number({ message: "Before:", default: before })) ?? before);
-    after = Math.round((await number({ message: "After:", default: after })) ?? after);
-    printPlan();
+  const plan = await reviewPlan(context, { message: "Schedule this?", confirm: "Schedule" });
+  if (!plan) {
+    console.log("Skipped.");
+    return;
   }
 
-  // Only save what was changed here, so a later edit to config.json still
-  // applies to everything that was left alone.
   addScheduled(
     newRecording({
       channel: channel.name,
       program: snapshotOf(program),
-      paddingBefore: before === config.paddingBefore ? undefined : before,
-      paddingAfter: after === config.paddingAfter ? undefined : after,
-      writeNfo: writeNfo === config.writeNfo ? undefined : writeNfo,
-      comskip: comskip === config.comskip ? undefined : comskip,
+      ...planOverrides(plan, defaultPlan(context)),
     }),
   );
 
-  const ready = readyAtLocal(program, after + readyGraceMinutes).slice(0, 16);
+  const ready = readyAtLocal(program, plan.paddingAfter + readyGraceMinutes).slice(0, 16);
   console.log(`\n  Scheduled. Watch mode will download it after ${ready}.`);
   console.log(`  Run "timeshifter watch" if it isn't already running.`);
 }
@@ -277,112 +205,37 @@ async function downloadNow(
   channel: Channel,
   program: EpgProgram,
 ): Promise<void> {
-  let filename = outputFilename(config, channel, program);
-  const programMinutes = Math.round(
-    (program.end.getTime() - program.start.getTime()) / 60_000,
-  );
-
-  let before = config.paddingBefore;
-  let after = config.paddingAfter;
-  let writeNfo = config.writeNfo;
-  let comskip = config.comskip;
-  let window = recordingWindow(program, before, after);
-
-  const printPlan = (): void => {
-    const padding =
-      before || after ? `${before} min before, ${after} min after` : "none";
-    const tz = source.timezone ? ` ${source.timezone}` : "";
-    console.log("");
-    console.log(`  Channel:  ${channel.name}`);
-    console.log(`  Program:  ${program.title}`);
-    console.log(`  Aired:    ${formatProgramTime(program)}${tz}`);
-    console.log(`  Ended:    ${program.endLocal.slice(0, 16)}${tz}`);
-    console.log(`  Runtime:  ${programMinutes} min`);
-    console.log("");
-    console.log(`  Padding:  ${padding}`);
-    console.log(`  Start:    ${window.startLocal.slice(0, 16)}${tz}`);
-    console.log(`  End:      ${window.endLocal.slice(0, 16)}${tz}`);
-    console.log(`  Length:   ${window.minutes} min`);
-    console.log(`  Saving:   ${config.downloadDir}/${filename}`);
-    console.log(`  .nfo:     ${writeNfo ? "write" : "skip"}`);
-    console.log(`  comskip:  ${comskip ? "run" : "skip"}`);
-    console.log("");
-  };
-
-  printPlan();
-
-  // Default action is "Download", so the common case is a single Enter.
-  // Padding can be adjusted (negative values trim) without re-picking the show.
-  for (;;) {
-    const action = await select({
+  const plan = await reviewPlan(
+    {
+      config,
+      channel,
+      program,
+      timezone: source.timezone,
+      upcoming: false,
+      readyGraceMinutes: 0,
+    },
+    {
       message: "Download this?",
-      choices: [
-        { name: "Download", value: "download" },
-        { name: "Adjust padding", value: "adjust" },
-        { name: "Edit filename", value: "filename" },
-        {
-          name: `Write .nfo:  ${writeNfo ? "on" : "off"}  (select to turn ${writeNfo ? "off" : "on"})`,
-          value: "toggle-nfo",
-        },
-        {
-          name: `Run comskip: ${comskip ? "on" : "off"}  (select to turn ${comskip ? "off" : "on"})`,
-          value: "toggle-comskip",
-        },
-        { name: "Cancel", value: "cancel" },
-      ],
-    });
-    if (action === "cancel") {
-      console.log("Skipped.");
-      return;
-    }
-    if (action === "download") {
-      const outputPath = path.join(config.downloadDir, filename);
-      if (existsSync(outputPath)) {
-        const overwrite = await confirm({
+      confirm: "Download",
+      check: async ({ filename }) => {
+        if (!existsSync(path.join(config.downloadDir, filename))) return true;
+        // Saying no goes back to the options, so you can rename it instead.
+        return confirm({
           message: `${filename} already exists. Overwrite it?`,
           default: false,
         });
-        // Back to the menu so you can edit the filename instead of overwriting.
-        if (!overwrite) continue;
-      }
-      break;
-    }
-
-    if (action === "filename") {
-      filename = (
-        await input({
-          message: "Filename:",
-          default: filename,
-          prefill: "editable",
-          validate: (v) => v.trim().length > 0 || "Enter a filename.",
-        })
-      ).trim();
-      printPlan();
-      continue;
-    }
-
-    if (action === "toggle-nfo") {
-      writeNfo = !writeNfo;
-      printPlan();
-      continue;
-    }
-
-    if (action === "toggle-comskip") {
-      comskip = !comskip;
-      printPlan();
-      continue;
-    }
-
-    console.log("\nMinutes to add at each end. A negative number records less.");
-    before = Math.round((await number({ message: "Before:", default: before })) ?? before);
-    after = Math.round((await number({ message: "After:", default: after })) ?? after);
-    window = recordingWindow(program, before, after);
-    printPlan();
+      },
+    },
+  );
+  if (!plan) {
+    console.log("Skipped.");
+    return;
   }
 
+  const window = recordingWindow(program, plan.paddingBefore, plan.paddingAfter);
   const url = source.catchupUrl(channel, window);
   console.log(""); // blank line above the progress bar
-  const result = await download(config, url, filename);
+  const result = await download(config, url, plan.filename);
 
   // Set the file's time to when the show aired, so it sorts by air date in a
   // media library rather than by when it was downloaded.
@@ -395,7 +248,7 @@ async function downloadNow(
     }
   }
 
-  if (writeNfo) {
+  if (plan.writeNfo) {
     try {
       await syncNfo(program, result.outputPath, new Date());
       console.log("  ✓ Wrote .nfo metadata");
@@ -404,7 +257,7 @@ async function downloadNow(
     }
   }
 
-  if (comskip) {
+  if (plan.comskip) {
     try {
       const { commercials } = await ensureEdl(result.outputPath);
       console.log(`  ✓ Generated the .edl (comskip) · ${commercials} ${commercials === 1 ? "ad break" : "ad breaks"} found`);

@@ -544,6 +544,19 @@ describe("pollOnce", () => {
       assert.equal(only(file).status, "pending");
     });
 
+    it("saves to the filename that was edited at the prompt", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+      const file = schedule(dir, { filename: "Moon Launch.ts" });
+      serveBytes("launch footage");
+      restoreFfmpeg = await installFakeFfmpeg("copy");
+
+      const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, false, now, file);
+
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, listed: 1, downloaded: 1 }));
+      assert.equal(existsSync(path.join(dir, "Moon Launch.ts")), true);
+      assert.equal(only(file).outputPath, path.join(dir, "Moon Launch.ts"));
+    });
+
     it("uses the recording's own padding over the global", async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
       // now is end + 60 min, so 120 min of after-padding means it isn't ready.

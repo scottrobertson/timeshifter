@@ -38,6 +38,8 @@ export interface ScheduledRecording {
   paddingBefore?: number;
   /** Minutes after the end. Falls back to the global paddingAfter. */
   paddingAfter?: number;
+  /** The name to save it as, set if you edited it at the prompt. Used instead of the templates. */
+  filename?: string;
   /** Output filename template. Falls back to the global filenameTemplate. */
   filenameTemplate?: string;
   /** Strings to remove from the title when building the filename. Falls back to the global filenameStrip. */
@@ -140,6 +142,7 @@ function parseRecording(value: unknown, index: number): ScheduledRecording {
     program: parseSnapshot(obj.program, id),
     paddingBefore: asOptionalInt(obj.paddingBefore, "paddingBefore"),
     paddingAfter: asOptionalInt(obj.paddingAfter, "paddingAfter"),
+    filename: asOptionalString(obj.filename, "filename"),
     filenameTemplate: asOptionalString(obj.filenameTemplate, "filenameTemplate"),
     filenameStrip: asOptionalStringArray(obj.filenameStrip, "filenameStrip"),
     writeNfo: asOptionalBoolean(obj.writeNfo, "writeNfo"),

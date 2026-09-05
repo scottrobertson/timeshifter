@@ -152,7 +152,7 @@ Pick a program (type to filter):
   2026-09-03 18:00-20:00 · Press Conference
 ```
 
-Either way you get the usual plan, with a `Ready` line saying when it'll be downloaded. Set the padding, then choose Schedule.
+Either way you get the usual plan, with a `Ready` line saying when it'll be downloaded. Adjust the padding, edit the filename, or flip the `.nfo` and comskip, then choose Schedule.
 
 ```
   Channel:  NASA TV
@@ -166,6 +166,9 @@ Either way you get the usual plan, with a `Ready` line saying when it'll be down
   End:      2026-09-05 22:30
   Length:   185 min
   Ready:    2026-09-05 22:30
+  Saving:   /catchup/NASA TV - Artemis II Launch - 2026-09-05_19-30.ts
+  .nfo:     write
+  comskip:  run
 ```
 
 The download happens **after** the show has finished, not while it's on. Catchup is served by time, so the footage has to exist before it can be asked for. `Ready` is the show's end plus your after-padding (plus `readyGraceMinutes`, if you've set one).
@@ -176,7 +179,7 @@ Some things worth knowing:
 
 - **It records the time slot, not the show.** Picking a show is just a convenient way to choose a start and end. Whatever is on that channel between those times is what you get, so if the schedule slips, pad it out. The guide isn't consulted again once it's scheduled.
 - If the download doesn't work, it's retried on every poll for 48 hours after the slot ended, then given up on and marked `expired`.
-- Padding, `.nfo` and comskip are saved per recording only if you changed them at the prompt. Leave them alone and they follow your `config.json`, so a later edit there still applies.
+- Padding, `.nfo` and comskip are saved per recording only if you changed them at the prompt. Leave them alone and they follow your `config.json`, so a later edit there still applies. Same for the filename: edit it and that exact name is used, otherwise it's built from `filenameTemplate` when the download happens.
 - Finished ones stay in the list for 30 days so you can see what happened, then the entry drops out of `scheduled.json`. That only tidies the list. The recording itself is never deleted.
 
 ## Watch mode (automatic downloads)

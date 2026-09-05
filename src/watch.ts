@@ -6,12 +6,12 @@ import { XtreamSource } from "./xtream.js";
 import {
   download,
   ensureEdl,
-  outputFilename,
   readyAtLocal,
   recordingWindow,
   setFileTime,
   syncNfo,
 } from "./timeshift.js";
+import { resolvePlan, type RecordingPlan } from "./plan.js";
 import {
   channelMatches,
   channelNameMatches,
@@ -66,26 +66,18 @@ function status(label: string): string {
   return label.padEnd(9);
 }
 
-interface DownloadOptions {
-  before: number;
-  after: number;
-  writeNfo: boolean;
-  comskip: boolean;
-}
-
 async function downloadProgram(
   config: Config,
   source: Source,
   channel: Channel,
   program: EpgProgram,
-  filename: string,
+  plan: RecordingPlan,
   prefix: string,
-  { before, after, writeNfo, comskip }: DownloadOptions,
 ): Promise<string | undefined> {
   try {
-    const window = recordingWindow(program, before, after);
+    const window = recordingWindow(program, plan.paddingBefore, plan.paddingAfter);
     const url = source.catchupUrl(channel, window);
-    const result = await download(config, url, filename);
+    const result = await download(config, url, plan.filename);
     if (config.setAiredTime) {
       try {
         await setFileTime(result.outputPath, program.end);
@@ -93,7 +85,7 @@ async function downloadProgram(
         // Non-fatal: the recording is fine, only its file date didn't get set.
       }
     }
-    if (writeNfo) {
+    if (plan.writeNfo) {
       try {
         await syncNfo(program, result.outputPath, new Date());
       } catch {
@@ -103,7 +95,7 @@ async function downloadProgram(
     const gb = (result.bytesDownloaded / 1e9).toFixed(2);
     console.log(`${prefix}${status("✓ saved")} ${gb} GB · ${result.outputPath}`);
     // After the saved line, so the comskip spinner sits under the recording it's for.
-    if (comskip) {
+    if (plan.comskip) {
       try {
         const edl = await ensureEdl(result.outputPath);
         // Only report when comskip actually ran. An existing .edl is a no-op, so
@@ -227,9 +219,6 @@ export async function pollOnce(
       console.log(`${prefix}${status("no match")} no channel matches "${sub.channel}"`);
       continue;
     }
-    const before = sub.paddingBefore ?? config.paddingBefore;
-    const after = sub.paddingAfter ?? config.paddingAfter;
-    const comskip = sub.comskip ?? config.comskip;
     // No "from" means take the whole archive (file-exists dedup stops repeats).
     const cutoff = sub.from ? Date.parse(sub.from) : Number.NEGATIVE_INFINITY;
 
@@ -237,25 +226,19 @@ export async function pollOnce(
       const programs = await programsFor(channel);
       for (const program of programs) {
         if (!titleMatches(sub, program.title)) continue;
-        if (!isDue(program, after, watch.readyGraceMinutes, cutoff, now)) continue;
+        const plan = resolvePlan(config, channel, program, sub);
+        if (!isDue(program, plan.paddingAfter, watch.readyGraceMinutes, cutoff, now)) continue;
         result.ready++;
 
         const when = program.startLocal.slice(0, 16);
-        const filename = outputFilename(
-          config,
-          channel,
-          program,
-          sub.filenameTemplate,
-          sub.filenameStrip,
-        );
-        const outputPath = path.join(config.downloadDir, filename);
+        const outputPath = path.join(config.downloadDir, plan.filename);
         if (existsSync(outputPath)) {
           result.alreadyHad++;
           // Refresh the sidecar even when the file is already there, so an
           // existing recording still gets (or updates) its .nfo. Note it on the
           // line only when it actually changed.
           let note = "";
-          if (config.writeNfo) {
+          if (plan.writeNfo) {
             try {
               const nfo = await syncNfo(program, outputPath, new Date());
               if (nfo.status !== "unchanged") note = ` · ${nfo.status} .nfo`;
@@ -266,7 +249,7 @@ export async function pollOnce(
           // Print the recording first, so a backfill comskip run (which blocks
           // for minutes) shows its spinner under the file it's working on.
           console.log(`${prefix}${status("have")} ${when} · ${program.title}${note}`);
-          if (comskip) {
+          if (plan.comskip) {
             try {
               // Backfill: generate the .edl for a recording we already have but
               // that's missing one. It only runs comskip once, then no-ops.
@@ -287,12 +270,7 @@ export async function pollOnce(
         console.log(`${prefix}${status(label)} ${when} · ${program.title}`);
         result.listed++;
         if (dryRun) continue;
-        const saved = await downloadProgram(config, source, channel, program, filename, prefix, {
-          before,
-          after,
-          writeNfo: config.writeNfo,
-          comskip,
-        });
+        const saved = await downloadProgram(config, source, channel, program, plan, prefix);
         if (saved) {
           result.downloaded++;
         } else {
@@ -361,16 +339,12 @@ async function pollScheduled(
       continue;
     }
 
-    const before = recording.paddingBefore ?? config.paddingBefore;
-    const after = recording.paddingAfter ?? config.paddingAfter;
-    const writeNfo = recording.writeNfo ?? config.writeNfo;
-    const comskip = recording.comskip ?? config.comskip;
-
     const program = toProgram(recording);
+    const plan = resolvePlan(config, channel, program, recording);
     const when = program.startLocal.slice(0, 16);
 
-    if (!isDue(program, after, watch.readyGraceMinutes, Number.NEGATIVE_INFINITY, now)) {
-      const ready = readyAtLocal(program, after + watch.readyGraceMinutes).slice(0, 16);
+    if (!isDue(program, plan.paddingAfter, watch.readyGraceMinutes, Number.NEGATIVE_INFINITY, now)) {
+      const ready = readyAtLocal(program, plan.paddingAfter + watch.readyGraceMinutes).slice(0, 16);
       console.log(`${prefix}${status("waiting")} ${when} · ${program.title} · ready ${ready}`);
       result.waiting++;
       continue;
@@ -390,14 +364,7 @@ async function pollScheduled(
       continue;
     }
 
-    const filename = outputFilename(
-      config,
-      channel,
-      program,
-      recording.filenameTemplate,
-      recording.filenameStrip,
-    );
-    const outputPath = path.join(config.downloadDir, filename);
+    const outputPath = path.join(config.downloadDir, plan.filename);
 
     if (existsSync(outputPath)) {
       result.alreadyHad++;
@@ -416,12 +383,7 @@ async function pollScheduled(
     result.listed++;
     if (dryRun) continue;
 
-    const saved = await downloadProgram(config, source, channel, program, filename, prefix, {
-      before,
-      after,
-      writeNfo,
-      comskip,
-    });
+    const saved = await downloadProgram(config, source, channel, program, plan, prefix);
     if (saved) {
       result.downloaded++;
       updateScheduled(

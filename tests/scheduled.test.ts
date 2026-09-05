@@ -66,6 +66,19 @@ describe("loadSchedule", () => {
     assert.deepEqual(loadSchedule(file), [recording]);
   });
 
+  it("round trips an edited filename", async () => {
+    const file = await tempFile();
+    const recording = makeRecording({ filename: "Artemis II.ts" });
+    saveSchedule([recording], file);
+    assert.deepEqual(loadSchedule(file), [recording]);
+  });
+
+  it("throws when the filename is empty", async () => {
+    const file = await tempFile();
+    await writeFile(file, JSON.stringify({ recordings: [makeRecording({ filename: "" })] }));
+    assert.throws(() => loadSchedule(file), /"filename" that must be a non-empty string/);
+  });
+
   it("gives nothing when the file has no recordings key", async () => {
     const file = await tempFile();
     await writeFile(file, "{}");
