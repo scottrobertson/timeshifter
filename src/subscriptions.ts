@@ -147,7 +147,7 @@ export function loadWatchConfig(file = defaultConfigFile()): WatchConfig {
 
   const watch = config.watch ?? {};
   if (typeof watch !== "object" || watch === null || Array.isArray(watch)) {
-    fail(`has a "watch" that must be an object (see config.example.json).`);
+    fail(`has a "watch" that must be an object (see the README).`);
   }
   const obj = watch as Record<string, unknown>;
 

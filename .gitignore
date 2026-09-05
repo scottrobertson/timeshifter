@@ -3,7 +3,9 @@ dist/
 downloads/
 *.log
 .DS_Store
-config/
+# Your own config lives here. The example is the one thing kept.
+config/*
+!config/config.example.json
 config.json
 scheduled.json
 scheduled.json.tmp

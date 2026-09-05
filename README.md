@@ -38,7 +38,7 @@ Everything timeshifter needs lives in one folder: `config` in the directory you 
 }
 ```
 
-If you've cloned the repo, `mkdir config && cp config.example.json config/config.json` gets you there with every optional field filled in as well.
+If you've cloned the repo, `cp config/config.example.json config/config.json` gets you there with every optional field filled in as well.
 
 The same folder is where `scheduled.json` ends up, which holds any [scheduled recordings](#scheduled-recordings). It's written for you, so you never need to create or edit it. A `comskip.ini` in there is picked up too, if you want to tune [commercial detection](#commercial-detection-edl).
 
@@ -124,7 +124,7 @@ Both download **after** the show has finished, not while it's on. Catchup is ser
 
 ### Subscriptions
 
-Let timeshifter watch the guide and download anything that matches a set of rules, as soon as it has finished airing. Add a `watch` block to your `config.json` (see `config.example.json`):
+Let timeshifter watch the guide and download anything that matches a set of rules, as soon as it has finished airing. Add a `watch` block to your `config.json` (see `config/config.example.json`):
 
 ```json
 {

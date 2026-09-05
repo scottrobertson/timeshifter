@@ -59,7 +59,7 @@ function missingConfig(file: string): never {
   } catch {
     // Nowhere to write it (a read-only mount, say), so just say it's missing.
     throw new Error(
-      `Couldn't find ${file}. Copy config.example.json to config.json and fill in your provider details.`,
+      `Couldn't find ${file}, and a starter one couldn't be written there either. Create it with your provider details (see the README).`,
     );
   }
   throw new Error(`${file} didn't exist, so a starter one has been written. Fill it in and run again.`);
@@ -86,7 +86,7 @@ export function readConfigFile(file = defaultConfigFile()): Record<string, unkno
 function requiredString(obj: Record<string, unknown>, field: string): string {
   const value = obj[field];
   if (typeof value !== "string" || !value.trim()) {
-    fail(`is missing a "${field}". Copy config.example.json and fill in your provider details.`);
+    fail(`is missing a "${field}". Fill in your provider details and run again.`);
   }
   return value.trim();
 }
