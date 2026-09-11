@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   isDue,
+  isUpcoming,
   pollOnce,
+  upcomingLines,
   type PollResult,
   type ScheduledPollResult,
   type SubscriptionPollResult,
@@ -71,6 +73,55 @@ describe("isDue", () => {
   it("skips programs that aren't in the archive", () => {
     const now = end + 60 * 60_000;
     assert.equal(isDue(makeProgram({ hasArchive: false }), 0, 0, cutoff, now), false);
+  });
+});
+
+describe("isUpcoming", () => {
+  const cutoff = Date.UTC(2026, 5, 7, 11, 0, 0); // an hour before the program ends
+  const end = Date.UTC(2026, 5, 7, 13, 0, 0);
+
+  it("is upcoming while the catchup isn't ready", () => {
+    const now = end + 29 * 60_000; // 29 min after end, padding is 30
+    assert.equal(isUpcoming(makeProgram(), 30, 0, cutoff, now), true);
+  });
+
+  it("stops being upcoming once the catchup is ready", () => {
+    const now = end + 30 * 60_000;
+    assert.equal(isUpcoming(makeProgram(), 30, 0, cutoff, now), false);
+  });
+
+  it("counts a show that hasn't aired yet, archive flag or not", () => {
+    const now = end - 60 * 60_000; // still on air
+    assert.equal(isUpcoming(makeProgram({ hasArchive: false }), 0, 0, cutoff, now), true);
+  });
+
+  it("skips programs that ended at or before the cutoff", () => {
+    const now = end - 60 * 60_000;
+    assert.equal(isUpcoming(makeProgram(), 0, 0, end, now), false);
+  });
+});
+
+describe("upcomingLines", () => {
+  function entries(count: number): Array<{ start: number; line: string }> {
+    // Newest first, the order the guide gives them in.
+    return Array.from({ length: count }, (_, i) => ({
+      start: Date.UTC(2026, 5, count - i, 12, 0, 0),
+      line: `launch ${count - i}`,
+    }));
+  }
+
+  it("puts what's on next at the top", () => {
+    assert.deepEqual(upcomingLines(entries(3), "[subs] "), ["launch 1", "launch 2", "launch 3"]);
+  });
+
+  it("counts the rest on the end once there are more than five", () => {
+    const lines = upcomingLines(entries(8), "[subs] ");
+    assert.deepEqual(lines.slice(0, 5), ["launch 1", "launch 2", "launch 3", "launch 4", "launch 5"]);
+    assert.match(lines[5]!, /^\[subs\] +and 3 more$/);
+  });
+
+  it("gives nothing when there's nothing coming up", () => {
+    assert.deepEqual(upcomingLines([], "[subs] "), []);
   });
 });
 
@@ -153,7 +204,7 @@ describe("pollOnce", () => {
   function noScheduled(overrides: Partial<ScheduledPollResult> = {}): ScheduledPollResult {
     return {
       pending: 0,
-      waiting: 0,
+      upcoming: 0,
       listed: 0,
       downloaded: 0,
       failed: 0,
@@ -172,6 +223,7 @@ describe("pollOnce", () => {
         {
           subscription: "Moon launches",
           ready: 0,
+          upcoming: 0,
           listed: 0,
           downloaded: 0,
           failed: 0,
@@ -373,6 +425,46 @@ describe("pollOnce", () => {
       scheduleIn(dir),
     );
 
+    assert.deepEqual(results, summary({ upcoming: 1 }));
+  });
+
+  it("counts a show that hasn't aired yet as upcoming", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+
+    // The provider only sets the archive flag once a show has aired.
+    const tomorrow = makeProgram({
+      start: new Date(Date.UTC(2026, 5, 8, 12, 0, 0)),
+      end: new Date(Date.UTC(2026, 5, 8, 13, 0, 0)),
+      startLocal: "2026-06-08 12:00:00",
+      endLocal: "2026-06-08 13:00:00",
+      hasArchive: false,
+    });
+
+    const results = await pollOnce(
+      makeConfig(dir),
+      fakeSource([tomorrow]),
+      makeWatch(),
+      false,
+      now,
+      scheduleIn(dir),
+    );
+
+    assert.deepEqual(results, summary({ upcoming: 1 }));
+    assert.equal(existsSync(path.join(dir, recordingName)), false);
+  });
+
+  it("leaves an old program out of the archive alone", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "timeshifter-watch-"));
+
+    const results = await pollOnce(
+      makeConfig(dir),
+      fakeSource([makeProgram({ hasArchive: false })]),
+      makeWatch(),
+      false,
+      now,
+      scheduleIn(dir),
+    );
+
     assert.deepEqual(results, summary());
   });
 
@@ -423,7 +515,7 @@ describe("pollOnce", () => {
         file,
       );
 
-      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, waiting: 1 }));
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, upcoming: 1 }));
       assert.equal(existsSync(path.join(dir, recordingName)), false);
       assert.equal(only(file).status, "pending");
     });
@@ -564,7 +656,7 @@ describe("pollOnce", () => {
 
       const results = await pollOnce(config(dir), fakeSource([makeProgram()]), watch, false, now, file);
 
-      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, waiting: 1 }));
+      assert.deepEqual(results.scheduled, noScheduled({ pending: 1, upcoming: 1 }));
     });
 
     it("leaves a recording that's already been done alone", async () => {

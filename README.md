@@ -132,6 +132,17 @@ Neither one happens without this. It's what notices a show is ready and does the
 
 It won't re-download a show whose file is already in the download dir, so it's safe to leave running and to restart. `config.json` is re-read at the start of every poll, so you can edit your subscriptions without restarting (if you save a broken file, it keeps using the last good one). To see what it would grab without downloading anything, append `--dry-run` to any of these.
 
+Every poll prints what it did and what's coming up, so a quiet poll still shows you that something is lined up. `upcoming` lines are shows that match but haven't aired yet, or have only just finished, and `ready` is the earliest the watcher will be able to fetch each one. Each subscription lists its next five, then counts the rest.
+
+```
+── 2026-09-11 18:04:49 ─────────────────────────────────────
+[NASA launches] have      2026-09-10 18:00 · Artemis II Launch
+[NASA launches] upcoming  2026-09-12 19:00 · Artemis III Launch · ready 2026-09-12 21:35
+[scheduled    ] upcoming  2026-09-13 14:00 · Crew-12 Docking · ready 2026-09-13 16:05
+
+1 sub · 1 scheduled · 2 upcoming · nothing new
+```
+
 <details>
 <summary><strong>Run with Docker</strong></summary>
 

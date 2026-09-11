@@ -28,6 +28,11 @@ import {
   updateScheduled,
 } from "./scheduled.js";
 
+/** When a program's catchup should be there to download, as a timestamp. */
+function readyAt(program: EpgProgram, paddingAfter: number, readyGraceMinutes: number): number {
+  return program.end.getTime() + (paddingAfter + readyGraceMinutes) * 60_000;
+}
+
 /**
  * Whether a program should be downloaded now: it's in the archive, it finished
  * airing after the cutoff (the subscription's "from" date, or -Infinity to take
@@ -43,8 +48,23 @@ export function isDue(
 ): boolean {
   if (!program.hasArchive) return false;
   if (program.end.getTime() <= cutoff) return false;
-  const readyAt = program.end.getTime() + (paddingAfter + readyGraceMinutes) * 60_000;
-  return now >= readyAt;
+  return now >= readyAt(program, paddingAfter, readyGraceMinutes);
+}
+
+/**
+ * Whether a program is still to come: its catchup isn't there yet, either because
+ * it hasn't aired or because it only just finished. The archive flag is ignored on
+ * purpose, since the provider only sets it once a show has aired.
+ */
+export function isUpcoming(
+  program: EpgProgram,
+  paddingAfter: number,
+  readyGraceMinutes: number,
+  cutoff: number,
+  now: number,
+): boolean {
+  if (program.end.getTime() <= cutoff) return false;
+  return now < readyAt(program, paddingAfter, readyGraceMinutes);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -124,6 +144,8 @@ export interface SubscriptionPollResult {
   subscription: string;
   /** Programs that matched and were ready to download. */
   ready: number;
+  /** Programs that matched but haven't aired yet, or are waiting on the catchup. */
+  upcoming: number;
   /** Of those, how many a dry run would have downloaded. */
   listed: number;
   downloaded: number;
@@ -137,7 +159,7 @@ export interface ScheduledPollResult {
   /** How many were still waiting to happen when the poll reached them. */
   pending: number;
   /** Of those, how many have a slot that hasn't passed yet. */
-  waiting: number;
+  upcoming: number;
   /** Recordings that were ready to download. */
   listed: number;
   downloaded: number;
@@ -162,6 +184,26 @@ const SCHEDULED_LABEL = "scheduled";
  * that never aired doesn't get retried forever.
  */
 const EXPIRE_AFTER_MS = 48 * 60 * 60_000;
+
+/**
+ * How many upcoming shows a subscription lists before the rest are summed up on
+ * one line. A subscription with a loose title match can have a whole week of the
+ * guide ahead of it, and this prints every poll.
+ */
+const UPCOMING_SHOWN = 5;
+
+/** One log line per upcoming show, soonest first, with the rest counted on the end. */
+export function upcomingLines(
+  upcoming: Array<{ start: number; line: string }>,
+  prefix: string,
+): string[] {
+  const sorted = [...upcoming].sort((a, b) => a.start - b.start);
+  const lines = sorted.slice(0, UPCOMING_SHOWN).map((entry) => entry.line);
+  if (sorted.length > UPCOMING_SHOWN) {
+    lines.push(`${prefix}${status("")} and ${sorted.length - UPCOMING_SHOWN} more`);
+  }
+  return lines;
+}
 
 export async function pollOnce(
   config: Config,
@@ -203,6 +245,7 @@ export async function pollOnce(
     const result: SubscriptionPollResult = {
       subscription: sub.name,
       ready: 0,
+      upcoming: 0,
       listed: 0,
       downloaded: 0,
       failed: 0,
@@ -213,6 +256,11 @@ export async function pollOnce(
     // Every line leads with the subscription so you can tell where it came from
     // without per-subscription headers.
     const prefix = `[${sub.name.padEnd(nameWidth)}] `;
+
+    // Held back until the subscription's downloads are done, so each block reads
+    // as what happened and then what's still to come. The guide also arrives
+    // newest first, which would list next week above tonight.
+    const upcoming: Array<{ start: number; line: string }> = [];
 
     const matching = channels.filter((c) => channelMatches(sub, c));
     if (matching.length === 0) {
@@ -227,10 +275,21 @@ export async function pollOnce(
       for (const program of programs) {
         if (!titleMatches(sub, program.title)) continue;
         const plan = resolvePlan(config, channel, program, sub);
-        if (!isDue(program, plan.paddingAfter, watch.readyGraceMinutes, cutoff, now)) continue;
+        const when = program.startLocal.slice(0, 16);
+
+        if (!isDue(program, plan.paddingAfter, watch.readyGraceMinutes, cutoff, now)) {
+          if (isUpcoming(program, plan.paddingAfter, watch.readyGraceMinutes, cutoff, now)) {
+            const ready = readyAtLocal(program, plan.paddingAfter + watch.readyGraceMinutes).slice(0, 16);
+            result.upcoming++;
+            upcoming.push({
+              start: program.start.getTime(),
+              line: `${prefix}${status("upcoming")} ${when} · ${program.title} · ready ${ready}`,
+            });
+          }
+          continue;
+        }
         result.ready++;
 
-        const when = program.startLocal.slice(0, 16);
         const outputPath = path.join(config.downloadDir, plan.filename);
         if (existsSync(outputPath)) {
           result.alreadyHad++;
@@ -279,6 +338,7 @@ export async function pollOnce(
       }
     }
 
+    for (const line of upcomingLines(upcoming, prefix)) console.log(line);
   }
 
   const scheduled = await pollScheduled(
@@ -322,7 +382,7 @@ async function pollScheduled(
 
   const result: ScheduledPollResult = {
     pending: pending.length,
-    waiting: 0,
+    upcoming: 0,
     listed: 0,
     downloaded: 0,
     failed: 0,
@@ -345,8 +405,8 @@ async function pollScheduled(
 
     if (!isDue(program, plan.paddingAfter, watch.readyGraceMinutes, Number.NEGATIVE_INFINITY, now)) {
       const ready = readyAtLocal(program, plan.paddingAfter + watch.readyGraceMinutes).slice(0, 16);
-      console.log(`${prefix}${status("waiting")} ${when} · ${program.title} · ready ${ready}`);
-      result.waiting++;
+      console.log(`${prefix}${status("upcoming")} ${when} · ${program.title} · ready ${ready}`);
+      result.upcoming++;
       continue;
     }
 
@@ -415,12 +475,14 @@ function pollSeparator(now: number): string {
 function pollSummaryLine(poll: PollResult, subscriptions: number, dryRun: boolean): string {
   const total = poll.subscriptions.reduce(
     (acc, r) => ({
+      upcoming: acc.upcoming + r.upcoming,
       listed: acc.listed + r.listed,
       downloaded: acc.downloaded + r.downloaded,
       failed: acc.failed + r.failed,
       alreadyHad: acc.alreadyHad + r.alreadyHad,
     }),
     {
+      upcoming: poll.scheduled.upcoming,
       listed: poll.scheduled.listed,
       downloaded: poll.scheduled.downloaded,
       failed: poll.scheduled.failed,
@@ -430,6 +492,7 @@ function pollSummaryLine(poll: PollResult, subscriptions: number, dryRun: boolea
 
   const parts = [`${subscriptions} sub${subscriptions === 1 ? "" : "s"}`];
   if (poll.scheduled.pending) parts.push(`${poll.scheduled.pending} scheduled`);
+  if (total.upcoming) parts.push(`${total.upcoming} upcoming`);
   if (dryRun) {
     parts.push(total.listed ? `${total.listed} would download` : "nothing new");
   } else if (total.downloaded || total.failed) {
