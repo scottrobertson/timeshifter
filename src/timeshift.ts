@@ -422,14 +422,10 @@ export function nfoPathFor(outputPath: string): string {
   return path.join(dir, `${base}.nfo`);
 }
 
-// Many EPGs prefix the description with the season and episode, e.g.
-// "S21 E8 I Don't Got Any\n...". Pulled out into proper fields below.
-const SEASON_EPISODE_RE = /^S(\d+)\s*E(\d+)\b\s*/i;
-
 /**
- * Build the .nfo XML for a recording: an <episodedetails> sidecar that media
- * servers (Emby, Jellyfin, Kodi) read to get the title, plot and air date
- * instead of guessing from the filename. `dateAdded` is a preformatted
+ * Build the .nfo XML for a recording: a <movie> sidecar that media servers
+ * (Emby, Jellyfin, Kodi, Silo) read to get the title, plot and air date instead
+ * of guessing from the filename. `dateAdded` is a preformatted
  * "YYYY-MM-DD HH:MM:SS" string so it stays stable across refreshes.
  */
 export function buildNfo(program: EpgProgram, dateAdded: string): string {
@@ -439,29 +435,19 @@ export function buildNfo(program: EpgProgram, dateAdded: string): string {
     Math.round((program.end.getTime() - program.start.getTime()) / 60_000),
   );
 
-  // If the description starts with a season/episode marker, lift it into proper
-  // fields and drop the prefix from the plot so it isn't repeated.
-  const se = program.description.match(SEASON_EPISODE_RE);
-  const plot = se ? program.description.slice(se[0].length) : program.description;
-
-  const lines = [
+  // Recordings go in a movies library, and some servers (Silo) ignore a sidecar
+  // whose root doesn't match the library type, so this has to be <movie>.
+  return [
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`,
-    `<episodedetails>`,
+    `<movie>`,
     `  <title>${escapeXml(program.title)}</title>`,
-  ];
-  if (se) {
-    lines.push(`  <season>${Number(se[1])}</season>`);
-    lines.push(`  <episode>${Number(se[2])}</episode>`);
-  }
-  lines.push(
-    `  <plot>${escapeXml(plot)}</plot>`,
-    `  <aired>${date}</aired>`,
+    `  <plot>${escapeXml(program.description)}</plot>`,
     `  <premiered>${date}</premiered>`,
     `  <runtime>${runtime}</runtime>`,
     `  <dateadded>${dateAdded}</dateadded>`,
-    `</episodedetails>`,
-  );
-  return lines.join("\n") + "\n";
+    `</movie>`,
+    "",
+  ].join("\n");
 }
 
 export interface NfoSyncResult {

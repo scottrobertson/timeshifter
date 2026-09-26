@@ -311,7 +311,7 @@ describe("nfoPathFor", () => {
 });
 
 describe("buildNfo", () => {
-  it("fills the episode details", () => {
+  it("fills the movie details", () => {
     const nfo = buildNfo(
       makeProgram({
         title: "Artemis II Launch",
@@ -321,10 +321,10 @@ describe("buildNfo", () => {
       "2024-03-10 22:05:00",
     );
     assert.match(nfo, /^<\?xml version="1\.0" encoding="UTF-8" standalone="yes"\?>/);
-    assert.match(nfo, /<episodedetails>/);
+    assert.match(nfo, /<movie>/);
+    assert.match(nfo, /<\/movie>\n$/);
     assert.match(nfo, /<title>Artemis II Launch<\/title>/);
     assert.match(nfo, /<plot>Live launch coverage\.<\/plot>/);
-    assert.match(nfo, /<aired>2024-03-10<\/aired>/);
     assert.match(nfo, /<premiered>2024-03-10<\/premiered>/);
     assert.match(nfo, /<runtime>60<\/runtime>/); // makeProgram is a 60-minute show
     assert.match(nfo, /<dateadded>2024-03-10 22:05:00<\/dateadded>/);
@@ -339,7 +339,7 @@ describe("buildNfo", () => {
     assert.match(nfo, /<plot>Quote: &quot;go&quot;<\/plot>/);
   });
 
-  it("lifts a season/episode prefix out of the description", () => {
+  it("keeps a season/episode prefix in the plot", () => {
     const nfo = buildNfo(
       makeProgram({
         title: "Apollo Diaries",
@@ -347,20 +347,10 @@ describe("buildNfo", () => {
       }),
       "2024-03-10 22:05:00",
     );
-    assert.match(nfo, /<season>2<\/season>/);
-    assert.match(nfo, /<episode>5<\/episode>/);
-    // The prefix is stripped from the plot so it isn't repeated.
-    assert.match(nfo, /<plot>Orbital Insertion\nLive coverage of the second crewed flight\.<\/plot>/);
-  });
-
-  it("omits season/episode when the description has no prefix", () => {
-    const nfo = buildNfo(
-      makeProgram({ description: "Live coverage of the launch." }),
-      "2024-03-10 22:05:00",
-    );
+    // A movie has no season or episode fields, so the plot is the only place it can go.
     assert.doesNotMatch(nfo, /<season>/);
     assert.doesNotMatch(nfo, /<episode>/);
-    assert.match(nfo, /<plot>Live coverage of the launch\.<\/plot>/);
+    assert.match(nfo, /<plot>S2 E5 Orbital Insertion\nLive coverage of the second crewed flight\.<\/plot>/);
   });
 });
 

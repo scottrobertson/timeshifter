@@ -20,7 +20,7 @@ For now it works with Xtream Codes providers (the most common kind, where you lo
 - Pad or trim the start and end of a recording, as a default or per-download.
 - Name files however you like, including into subfolders.
 - Stamps each file with the show's air time, so it sorts by air date in your media library.
-- Writes a `.nfo` metadata file next to each recording, so Emby, Jellyfin and Kodi pick up the title, description, air date, runtime and (when the guide includes it) the season and episode number.
+- Writes a `.nfo` metadata file next to each recording, so Emby, Jellyfin, Kodi and Silo pick up the title, description, air date and runtime.
 - Live progress with download speed and ETA.
 - Saves as `.ts`, which plays in VLC, Plex, Emby and Jellyfin. No transcoding, so it's quick.
 - Runs as a Docker image (ffmpeg bundled), or directly with Node and ffmpeg.
@@ -53,7 +53,7 @@ The same folder is where `scheduled.json` ends up, which holds any [scheduled re
 | `filenameTemplate` | `{channel} - {title} - {datetime}.{ext}` | How files are named. Tokens: `{channel}`, `{title}`, `{date}`, `{time}`, `{datetime}`, `{year}`, `{month}`, `{day}` (month and day zero-padded), `{ext}`. Supports subfolders, e.g. `{channel}/{title} - {date}.{ext}`. |
 | `filenameStrip` | `[]` | Strings to remove from the title when building the filename, e.g. `["ᴸᶦᵛᵉ"]` for a live badge the EPG tacks on. Leftover double spaces are tidied up. Only affects the filename; show lists and the `.nfo` keep the original title. Note that changing it changes the filenames, so watch mode may re-download shows it already has under the old name. |
 | `setAiredTime` | `true` | Set the file's modified time to when the show aired, so it sorts by air date in a media library. Set to `false` to keep the download time. |
-| `writeNfo` | `true` | Write a `.nfo` metadata file next to each recording (title, description, air date, runtime, and season/episode when the guide includes it) so Emby, Jellyfin and Kodi read it instead of guessing from the filename. Set to `false` to skip it. You can also flip this per-download at the confirm prompt. |
+| `writeNfo` | `true` | Write a `.nfo` metadata file next to each recording (title, description, air date and runtime) so Emby, Jellyfin, Kodi and Silo read it instead of guessing from the filename. Set to `false` to skip it. You can also flip this per-download at the confirm prompt. |
 | `comskip` | `false` | Run [comskip](https://github.com/erikkaashoek/Comskip) on each recording to write a `.edl` commercial-skip file next to it. You can also flip this per-download at the confirm prompt. See [Commercial detection](#commercial-detection-edl). |
 | `watch` | — | Watch-mode rules. See [Subscriptions](#subscriptions). |
 
@@ -283,7 +283,7 @@ Set `"comskip": true` to run [comskip](https://github.com/erikkaashoek/Comskip) 
   - You can put shows in subfolders, e.g. `{channel}/{title} - {date}.{ext}`.
   - Set `filenameStrip` (globally or per subscription) to remove junk the EPG adds to titles, e.g. `["ᴸᶦᵛᵉ"]`. It only affects the filename.
 - **File time:** the downloaded file's modified time is set to when the show aired, so it sorts by air date in a media library. Set `"setAiredTime": false` to keep the normal download time. In Emby/Jellyfin, set the library's "date added behavior" to use the file date for this to affect "date added" sorting.
-- **.nfo metadata:** a `.nfo` file is written next to each recording with the title, description, air date and runtime, so Emby, Jellyfin and Kodi use that instead of guessing from the filename. When the guide prefixes the description with a season/episode marker (e.g. `S21 E8`), that's pulled out into proper season and episode fields. In watch mode it's also created or refreshed for recordings you already have. Set `"writeNfo": false` to turn it off. In interactive mode you can also flip it on or off per download at the confirm prompt.
+- **.nfo metadata:** a `.nfo` file is written next to each recording with the title, description, air date and runtime, so Emby, Jellyfin, Kodi and Silo use that instead of guessing from the filename. It's written as a movie `.nfo`, so put recordings in a Movies library. Some servers (Silo) ignore it in a TV library. In watch mode it's also created or refreshed for recordings you already have. Set `"writeNfo": false` to turn it off. In interactive mode you can also flip it on or off per download at the confirm prompt.
 - **Config folder:** `config` in the directory you run from, or `/config` in the Docker image. Set `TIMESHIFTER_CONFIG_DIR` to put `config.json`, `scheduled.json` and `comskip.ini` somewhere else.
 - **Timezone:** set the `TZ` environment variable (e.g. `Europe/London`) to control the timezone of the watch-mode log timestamps; it defaults to UTC. The Docker image bundles the zone data. Guide and recording times are unaffected; they always use the provider's own local time, which is what the endpoint expects, so no timezone conversion happens.
 
