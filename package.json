@@ -13,10 +13,10 @@
     "test": "node --import tsx --test --test-isolation=none tests/*.test.ts"
   },
   "dependencies": {
-    "@inquirer/prompts": "^8.7.2"
+    "@inquirer/prompts": "^8.7.3"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.4",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
