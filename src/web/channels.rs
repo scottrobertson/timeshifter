@@ -17,6 +17,7 @@ use crate::plan::{self, Overrides, Plan};
 use crate::recording::{Channel, Program, planned_window, ready_at_local, recording_window};
 use crate::scheduled;
 use crate::settings::Settings;
+use crate::starred;
 use crate::subscriptions::{self, Subscription, channel_name_matches};
 
 pub struct ChannelRow {
@@ -25,12 +26,14 @@ pub struct ChannelRow {
     pub group: String,
     pub archive_days: i64,
     pub search: String,
+    pub starred: bool,
 }
 
 #[derive(Template)]
 #[template(path = "channels.html")]
 struct ChannelsPage {
     chrome: Chrome,
+    starred: Vec<ChannelRow>,
     rows: Vec<ChannelRow>,
     groups: usize,
     error: Option<String>,
@@ -38,28 +41,45 @@ struct ChannelsPage {
 
 pub async fn list(State(state): AppStateRef) -> Response {
     let settings = state.db.settings().await;
-    let (rows, error) = if !settings.has_provider() {
+    let starred_names = state.db.call(|conn| starred::all(conn)).await.unwrap_or_default();
+    let (all, error) = if !settings.has_provider() {
         (vec![], None)
     } else {
         match state.guide.channels(&settings, false).await {
-            Ok(channels) => (channels.iter().map(channel_row).collect(), None),
+            Ok(channels) => (channels.iter().map(|c| channel_row(c, &starred_names)).collect(), None),
             Err(e) => (vec![], Some(format!("Couldn't read the channel list: {e:#}"))),
         }
     };
-    let mut groups: Vec<&str> = rows.iter().map(|r: &ChannelRow| r.group.as_str()).collect();
+    let mut groups: Vec<&str> = all.iter().map(|r: &ChannelRow| r.group.as_str()).collect();
+    groups.sort();
     groups.dedup();
-    render(ChannelsPage { groups: groups.len(), chrome: chrome(&state, "channels").await, rows, error })
+    let groups = groups.len();
+    let (starred, rows) = all.into_iter().partition(|r| r.starred);
+    render(ChannelsPage { groups, chrome: chrome(&state, "channels").await, starred, rows, error })
 }
 
-fn channel_row(c: &Channel) -> ChannelRow {
+fn channel_row(c: &Channel, starred_names: &[String]) -> ChannelRow {
     let group = c.group.clone().unwrap_or_default();
     ChannelRow {
         href: format!("/channels/{}", c.stream_id),
         search: format!("{} {group}", c.name),
+        starred: starred_names.contains(&c.name.trim().to_lowercase()),
         name: c.name.clone(),
         group,
         archive_days: c.archive_days,
     }
+}
+
+#[derive(Deserialize)]
+pub struct StarForm {
+    name: String,
+    starred: String,
+}
+
+pub async fn star(State(state): AppStateRef, headers: HeaderMap, Form(form): Form<StarForm>) -> Response {
+    let on = form.starred == "1";
+    let _ = state.db.call(move |conn| starred::set(conn, &form.name, on)).await;
+    done(&headers)
 }
 
 /// Throws away what's remembered about the provider, so the next page reads it fresh.

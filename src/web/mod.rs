@@ -52,6 +52,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/", get(overview::page))
         .route("/channels", get(channels::list))
         .route("/channels/refresh", post(channels::refresh))
+        .route("/channels/star", post(channels::star))
         .route("/channels/{id}", get(channels::guide))
         .route("/channels/{id}/plan", get(channels::plan_page).post(channels::plan_submit))
         .route("/subscriptions", get(subscriptions_page::list))

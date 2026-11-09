@@ -9,6 +9,7 @@ mod plan;
 mod recording;
 mod scheduled;
 mod settings;
+mod starred;
 mod subscriptions;
 mod web;
 mod xtream;

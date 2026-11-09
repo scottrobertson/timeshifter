@@ -63,6 +63,23 @@
 </div>
 {% endmacro %}
 
+{% macro channel_row(c) %}
+<li data-title="{{ c.search }}" class="row flex items-center hover:bg-base-300/30">
+  <a href="{{ c.href }}" class="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-4">
+    <span class="min-w-0 flex-1 truncate font-medium">{{ c.name }}</span>
+    {% if !c.group.is_empty() %}<span class="hidden max-w-60 truncate text-xs text-base-content/40 sm:inline">{{ c.group }}</span>{% endif %}
+    <span class="chip tone-quiet w-14 justify-center tabular-nums" title="How far back the archive goes">{{ c.archive_days }} days</span>
+  </a>
+  <form method="post" action="/channels/star" data-async data-reload class="px-2">
+    <input type="hidden" name="name" value="{{ c.name }}">
+    <input type="hidden" name="starred" value="{% if c.starred %}0{% else %}1{% endif %}">
+    <button class="btn btn-ghost word-btn {% if c.starred %}text-warning hover:text-warning{% else %}text-base-content/25{% endif %}" title="{% if c.starred %}Unstar{% else %}Star to keep it at the top{% endif %}">
+      <svg viewBox="0 0 24 24" class="size-4" fill="{% if c.starred %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>
+    </button>
+  </form>
+</li>
+{% endmacro %}
+
 {% macro back(href, label) %}
 <a href="{{ href }}" class="mb-3 inline-flex items-center gap-1 text-[13px] text-base-content/50 hover:text-base-content">← {{ label }}</a>
 {% endmacro %}

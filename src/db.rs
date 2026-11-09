@@ -9,7 +9,10 @@ use serde::de::DeserializeOwned;
 use crate::settings::Settings;
 
 /// Schema changes, applied in order. The version is kept in SQLite's user_version.
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_initial.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/0001_initial.sql"),
+    include_str!("../migrations/0002_starred_channels.sql"),
+];
 
 /// The one SQLite connection, shared by every request and job. A single connection means
 /// writers queue up instead of failing with SQLITE_BUSY.
