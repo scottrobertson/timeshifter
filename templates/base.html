@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" class="bg-base-100">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#09090b">
+  <title>{% block title %}timeshifter{% endblock %}</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css?v={{ chrome.version }}">
+  <script src="/static/app.js?v={{ chrome.version }}" defer></script>
+</head>
+<body class="min-h-dvh bg-base-100 font-sans text-[14px] text-base-content antialiased">
+  <header class="sticky top-0 z-20 border-b border-base-300 bg-base-100/90 backdrop-blur">
+    <div class="mx-auto flex h-12 max-w-6xl items-center gap-2 px-4">
+      <a href="/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight">
+        <img src="/icon.svg" alt="" class="size-5"> <span class="hidden md:inline">timeshifter</span>
+      </a>
+      <nav class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:ml-3">
+        {% for (key, label, href) in [("overview", "Overview", "/"), ("channels", "Channels", "/channels"), ("subscriptions", "Subscriptions", "/subscriptions"), ("scheduled", "Scheduled", "/scheduled"), ("jobs", "Jobs", "/jobs"), ("settings", "Settings", "/settings")] %}
+          <a href="{{ href }}" class="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors {% if chrome.nav == *key %}bg-base-300 text-base-content{% else %}text-base-content/60 hover:text-base-content{% endif %}">
+            {{ label }}{% if *key == "jobs" %}<span data-live="nav">{{ chrome.nav_badge|safe }}</span>{% endif %}
+          </a>
+        {% endfor %}
+      </nav>
+      <span data-connection title="Live updates are connected" class="size-2 shrink-0 rounded-full bg-success"></span>
+    </div>
+  </header>
+  <main class="mx-auto max-w-6xl px-4 pt-6 pb-16">
+    {% if !chrome.has_provider && chrome.nav != "settings" %}
+      <a href="/settings" class="mb-6 flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/10 px-4 py-3 text-[13px] hover:bg-primary/15">
+        <span class="size-2 shrink-0 rounded-full bg-primary"></span>
+        <span class="flex-1">Add your provider's address and login in Settings to start reading the guide.</span>
+        <span class="text-primary">Settings →</span>
+      </a>
+    {% endif %}
+    {% block body %}{% endblock %}
+  </main>
+  <div data-toasts class="pointer-events-none fixed right-4 bottom-4 z-40 flex flex-col items-end gap-2"></div>
+</body>
+</html>

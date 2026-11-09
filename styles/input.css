@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@source "../templates";
+@source "../static/app.js";
+
+@theme {
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-base-50: #0c0c0e;
+  --color-base-100: #09090b;
+  --color-base-200: #111113;
+  --color-base-250: #18181b;
+  --color-base-300: #27272a;
+  --color-base-content: #ededef;
+  --color-muted: #8b8b94;
+  --color-primary: #6e62e5;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    touch-action: manipulation;
+    font-feature-settings: "cv11", "ss01";
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.01em;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 9999px; border: 2px solid #09090b; }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-base-300 px-3 text-[13px] font-medium whitespace-nowrap transition-colors hover:bg-base-300/70 disabled:cursor-default disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary/85;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-base-content/60 hover:bg-base-300/60 hover:text-base-content;
+  }
+  .btn-danger {
+    @apply bg-error/15 text-error hover:bg-error/25;
+  }
+  .btn-sm {
+    @apply h-7 px-2.5 text-xs;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap;
+  }
+  .card {
+    @apply rounded-xl border border-base-300 bg-base-200;
+  }
+  .th {
+    @apply px-3 py-2 text-left text-[11px] font-medium tracking-wide text-base-content/50 uppercase;
+  }
+  .label {
+    @apply mb-2 text-[11px] font-medium tracking-wide text-base-content/50 uppercase;
+  }
+  .row {
+    @apply border-t border-base-300 first:border-0;
+  }
+  .input {
+    @apply h-9 w-full rounded-md border border-base-300 bg-base-100 px-3 text-base outline-none transition-colors placeholder:text-base-content/30 focus:border-primary sm:h-8 sm:text-[13px];
+  }
+  textarea.input {
+    @apply h-auto py-2 leading-snug;
+  }
+  .field {
+    @apply block text-[13px];
+  }
+  .field-label {
+    @apply mb-1.5 block font-medium text-base-content/80;
+  }
+  .hint {
+    @apply mt-1 block text-xs leading-snug text-base-content/45;
+  }
+  .tip {
+    @apply pointer-events-none fixed z-50 max-w-72 rounded-md border border-base-300 bg-base-250 px-2.5 py-1.5 text-xs leading-snug text-base-content/90 shadow-lg shadow-black/40;
+  }
+  .toast {
+    @apply pointer-events-auto flex w-80 max-w-[calc(100vw-2rem)] items-start gap-2.5 rounded-lg border border-base-300 bg-base-250 px-3.5 py-3 text-[13px] shadow-lg shadow-black/40;
+  }
+  .word {
+    @apply flex gap-2;
+  }
+  .word-btn {
+    @apply size-9 px-0 text-base sm:size-8;
+  }
+  /* Only the last box gets a +, and a box on its own can't be removed. The buttons keep
+     their space so every box is the same width. */
+  .word:not(:last-child) [data-add],
+  .word:only-child [data-remove] {
+    @apply invisible;
+  }
+  .error-box {
+    @apply mb-4 rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-[13px] text-error;
+  }
+  .tone-running { @apply bg-primary/20 text-primary; }
+  .tone-queued, .tone-pending { @apply bg-base-300 text-base-content/60; }
+  .tone-succeeded, .tone-done, .tone-have { @apply bg-success/15 text-success; }
+  .tone-cancelled, .tone-interrupted, .tone-quiet { @apply bg-base-300/60 text-base-content/50; }
+  .tone-failed, .tone-error { @apply bg-error/15 text-error; }
+  .tone-warn, .tone-expired { @apply bg-warning/15 text-warning; }
+  .tone-info, .tone-scheduled { @apply bg-info/15 text-info; }
+}
+
+/* A soft pulse for anything happening right now. */
+@keyframes breathe {
+  50% { opacity: 0.45; }
+}
+.pulse {
+  animation: breathe 1.4s ease-in-out infinite;
+}

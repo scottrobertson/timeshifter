@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Scheduled · timeshifter{% endblock %}
+{% block body %}
+<div class="mb-4">
+  <h1 class="text-base font-semibold">Scheduled</h1>
+  <p class="text-[13px] text-base-content/50">One off recordings. Each one records the time slot you picked once it has aired, whatever the guide says later.</p>
+</div>
+<div data-src="/scheduled" data-refresh-on="jobs">{{ body|safe }}</div>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% import "macros.html" as m %}
+<div class="mb-4 flex flex-wrap items-end gap-x-4 gap-y-2">
+  <div>
+    <h1 class="text-base font-semibold">Subscriptions</h1>
+    <p class="text-[13px] text-base-content/50">Shows that match get downloaded on their own once they've aired.{% if let Some((iso, ago)) = checked %} Last checked <span data-ago="{{ iso }}">{{ ago }}</span>.{% endif %}</p>
+  </div>
+  <a href="/subscriptions/new" class="btn btn-primary ml-auto">New subscription</a>
+</div>
+
+{% if rows.is_empty() %}
+  {% call m::empty("No subscriptions yet", "Add one to download every show on a channel whose title matches, like every NASA launch.") %}{% endcall %}
+{% else %}
+  <ul class="card">
+    {% for s in rows %}
+      <li class="row">
+        <a href="{{ s.href }}" class="block px-4 py-3 hover:bg-base-300/30">
+          <div class="flex items-center gap-3">
+            <span class="min-w-0 flex-1 truncate font-medium">{{ s.name }}</span>
+            {% if let Some((tone, text)) = s.status %}<span class="chip tone-{{ tone }} hidden max-w-80 truncate sm:inline-flex">{{ text }}</span>{% endif %}
+          </div>
+          <div class="mt-0.5 text-xs text-base-content/50">
+            {{ s.channel }} · titles with {{ s.words }}{% if !s.excludes.is_empty() %}, but not {{ s.excludes }}{% endif %}
+          </div>
+          {% if !s.details.is_empty() %}<div class="mt-0.5 text-xs text-base-content/35">{{ s.details|join(" · ") }}</div>{% endif %}
+          {% if let Some((tone, text)) = s.status %}<div class="mt-1.5 sm:hidden"><span class="chip tone-{{ tone }}">{{ text }}</span></div>{% endif %}
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}

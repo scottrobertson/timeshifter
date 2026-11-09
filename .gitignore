@@ -1,11 +1,8 @@
-node_modules/
-dist/
+/target
+/static/style.css
 downloads/
 *.log
 .DS_Store
-# Your own config lives here. The example is the one thing kept.
-config/*
-!config/config.example.json
-config.json
-scheduled.json
-scheduled.json.tmp
+# The database, and any config.json from the command line version.
+config/
+data/

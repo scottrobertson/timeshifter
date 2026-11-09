@@ -1,0 +1,25 @@
+{% import "macros.html" as m %}
+<div class="card">
+  <div class="flex items-center gap-3 border-b border-base-300 px-4 py-2.5">
+    <h2 class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">Now</h2>
+    <span class="ml-auto text-xs text-base-content/45">
+      {% if !has_provider %}
+        Waiting on your provider details
+      {% elif !next_check.is_empty() %}
+        Next check <span data-until="{{ next_check_iso }}">{{ next_check }}</span>
+      {% elif !timer %}
+        <span class="hidden sm:inline">Checks only run when you ask in a development build</span>
+      {% endif %}
+    </span>
+    {% if has_provider %}
+      <form method="post" action="/jobs/check" data-async><button class="btn btn-sm" title="Read the guide now and queue anything that's ready">Check now</button></form>
+    {% endif %}
+  </div>
+  {% if jobs.is_empty() %}
+    <p class="px-4 py-6 text-center text-[13px] text-base-content/45">Nothing running</p>
+  {% else %}
+    <ul>
+      {% for j in jobs %}{% call m::job_row(j) %}{% endcall %}{% endfor %}
+    </ul>
+  {% endif %}
+</div>

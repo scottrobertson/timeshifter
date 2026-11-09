@@ -1,0 +1,17 @@
+<div class="card p-4 text-[13px]">
+  <h2 class="label">What gets recorded</h2>
+  {% if let Some(error) = error %}
+    <p class="text-error">{{ error }}</p>
+  {% else %}
+    <dl class="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5">
+      <dt class="text-base-content/45">From</dt><dd class="tabular-nums">{{ start }}</dd>
+      <dt class="text-base-content/45">To</dt><dd class="tabular-nums">{{ end }}</dd>
+      <dt class="text-base-content/45">Length</dt><dd class="tabular-nums">{{ minutes }} min</dd>
+      {% if schedule %}<dt class="text-base-content/45">Ready</dt><dd class="tabular-nums" title="The earliest the catchup can be fetched: the end, plus padding and any wait you've set in Settings">{{ ready }}</dd>{% endif %}
+      <dt class="text-base-content/45">Saving to</dt><dd class="break-all font-mono text-[12px] text-base-content/80">{% if no_folder %}<span class="font-sans text-warning">No download folder set</span>{% else %}{{ saving }}{% endif %}</dd>
+    </dl>
+    {% if !timezone.is_empty() %}<p class="mt-3 text-xs text-base-content/40">Times are your provider's, {{ timezone }}.</p>{% endif %}
+    {% if on_now && !schedule %}<p class="mt-3 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">This is on now, so you'll only get what has aired so far. Schedule it instead to get the whole thing.</p>{% endif %}
+    {% if exists %}<p class="mt-3 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">A file with this name is already there. {% if schedule %}It counts as done and won't be downloaded again.{% else %}Downloading replaces it.{% endif %}</p>{% endif %}
+  {% endif %}
+</div>

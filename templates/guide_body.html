@@ -1,0 +1,35 @@
+{% import "macros.html" as m %}
+{% call m::error_box(error) %}{% endcall %}
+{% if days.is_empty() && error.is_none() %}
+  {% if upcoming %}
+    {% call m::empty("Nothing coming up", "The guide has nothing listed ahead for this channel yet.") %}{% endcall %}
+  {% else %}
+    {% call m::empty("Nothing in the archive", "The guide has no past shows for this channel. Try Coming up to schedule one instead.") %}{% endcall %}
+  {% endif %}
+{% endif %}
+{% for d in days %}
+  <section data-group class="mb-5">
+    <h2 class="label">{{ d.label }}</h2>
+    <ul class="card">
+      {% for r in d.rows %}
+        <li data-title="{{ r.search }}" class="row flex items-start gap-3 px-4 py-2.5 {% if r.muted %}opacity-55{% endif %}">
+          <span class="hidden w-28 shrink-0 pt-px text-[13px] tabular-nums text-base-content/55 sm:block">{{ r.time }}</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-xs tabular-nums text-base-content/55 sm:hidden">{{ r.time }}</div>
+            <div class="flex items-center gap-2">
+              {% if r.on_now %}<span class="size-1.5 shrink-0 rounded-full bg-error pulse" title="On now"></span>{% endif %}
+              <span class="min-w-0 truncate font-medium">{{ r.title }}</span>
+            </div>
+            {% if !r.description.is_empty() %}<p class="mt-0.5 line-clamp-2 text-xs text-base-content/45" title="{{ r.description }}">{{ r.description }}</p>{% endif %}
+            {% if !r.note.is_empty() %}<p class="mt-0.5 text-xs text-base-content/40">{{ r.note }}</p>{% endif %}
+          </div>
+          <div class="flex shrink-0 items-center gap-2 pt-px">
+            {% if let Some((tone, label)) = r.state %}<span class="chip tone-{{ tone }} {% if *tone == "running" %}pulse{% endif %}">{{ label }}</span>{% endif %}
+            {% if let Some((label, href)) = r.action %}<a href="{{ href }}" class="btn btn-sm">{{ label }}</a>{% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endfor %}
+{% if !days.is_empty() %}<p data-filter-empty hidden class="py-8 text-center text-[13px] text-base-content/50">No show matches that.</p>{% endif %}

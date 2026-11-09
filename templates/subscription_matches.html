@@ -1,0 +1,17 @@
+{% if let Some(h) = hint %}
+  <div class="card px-4 py-5 text-[13px] text-base-content/50">{{ h }}</div>
+{% elif let Some(e) = error %}
+  <div class="card px-4 py-4 text-[13px] text-warning">{{ e }}</div>
+{% elif matches.is_empty() %}
+  <div class="card px-4 py-5 text-[13px] text-base-content/50">Nothing in the guide matches right now. It will pick up new shows as the guide fills in.</div>
+{% else %}
+  <ul class="card">
+    {% for x in matches %}
+      <li class="row px-4 py-2">
+        <div class="flex items-center gap-2"><span class="min-w-0 flex-1 truncate text-[13px]">{{ x.title }}</span><span class="chip tone-{{ x.tone }}">{{ x.label }}</span></div>
+        <div class="text-xs text-base-content/40">{{ x.when }}</div>
+      </li>
+    {% endfor %}
+    {% if more_matches > 0 %}<li class="row px-4 py-2 text-xs text-base-content/40">and {{ more_matches }} more</li>{% endif %}
+  </ul>
+{% endif %}

@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Subscriptions · timeshifter{% endblock %}
+{% block body %}
+<div data-src="/subscriptions" data-refresh-on="jobs">{{ body|safe }}</div>
+{% endblock %}

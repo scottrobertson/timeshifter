@@ -1,0 +1,65 @@
+{% import "macros.html" as m %}
+<div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+  <div class="card px-4 py-3">
+    <div class="text-xs text-base-content/50">Downloading</div>
+    <div class="text-xl font-semibold tabular-nums">{{ downloading }}</div>
+    <div class="truncate text-xs text-base-content/40">{% if queued > 0 %}{{ queued }} waiting{% else %}nothing waiting{% endif %}</div>
+  </div>
+  <div class="card px-4 py-3">
+    <div class="text-xs text-base-content/50">Coming up</div>
+    <div class="text-xl font-semibold tabular-nums">{{ coming_up }}</div>
+    <div class="truncate text-xs text-base-content/40">{% if next_title.is_empty() %}nothing lined up{% else %}{{ next_when }} · {{ next_title }}{% endif %}</div>
+  </div>
+  <div class="card px-4 py-3">
+    <div class="text-xs text-base-content/50">Saved this week</div>
+    <div class="text-xl font-semibold tabular-nums">{{ saved_week }}</div>
+    <div class="truncate text-xs text-base-content/40">{{ saved_day }} in the last day</div>
+  </div>
+  <a href="/jobs?kind=problems" class="card block px-4 py-3 hover:border-base-content/20">
+    <div class="text-xs text-base-content/50">Problems</div>
+    <div class="text-xl font-semibold tabular-nums {% if problems > 0 %}text-error{% endif %}">{{ problems }}</div>
+    <div class="truncate text-xs text-base-content/40">{% if problems > 0 %}failed this week{% else %}none this week{% endif %}</div>
+  </a>
+</div>
+
+<div class="mb-8" data-live="activity">{{ activity|safe }}</div>
+
+<div class="grid gap-8 lg:grid-cols-2">
+  <section>
+    <h2 class="label flex">Up next{% if let Some((iso, ago)) = checked %}<span class="ml-auto normal-case tracking-normal text-base-content/35">checked <span data-ago="{{ iso }}">{{ ago }}</span></span>{% endif %}</h2>
+    {% if up_next.is_empty() %}
+      {% if checked.is_none() && has_provider %}
+        {% call m::empty("Not checked yet", "Press Check now to read the guide and see what your subscriptions and scheduled recordings have coming up.") %}{% endcall %}
+      {% else %}
+        {% call m::empty("Nothing coming up", "Add a subscription, or schedule a show from a channel's guide before it airs.") %}{% endcall %}
+      {% endif %}
+    {% else %}
+      <ul class="card">
+        {% for u in up_next %}
+          <li class="row px-4 py-2.5">
+            <div class="flex items-center gap-3">
+              <a href="{{ u.href }}" class="min-w-0 flex-1 truncate font-medium hover:text-primary">{{ u.title }}</a>
+              <span class="chip {% if u.scheduled %}tone-scheduled{% else %}tone-pending{% endif %} max-w-36 truncate">{{ u.source }}</span>
+            </div>
+            <div class="mt-0.5 flex flex-wrap gap-x-2 text-xs text-base-content/45">
+              <span>{{ u.channel }}</span><span>·</span><span>Airs {{ u.airs }}</span><span>·</span>
+              <span title="The earliest the catchup can be fetched: the end, plus padding and any wait you've set">Ready <span data-until="{{ u.ready_iso }}">{{ u.ready_in }}</span></span>
+            </div>
+          </li>
+        {% endfor %}
+        {% if more_up_next > 0 %}<li class="row px-4 py-2 text-xs text-base-content/40">and {{ more_up_next }} more</li>{% endif %}
+      </ul>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2 class="label flex">Recently finished <a href="/jobs?kind=download" class="ml-auto normal-case tracking-normal hover:text-base-content">All downloads →</a></h2>
+    {% if recent.is_empty() %}
+      {% call m::empty("No downloads yet", "Finished downloads show up here, with where they were saved.") %}{% endcall %}
+    {% else %}
+      <ul class="card">
+        {% for j in recent %}{% call m::job_row(j) %}{% endcall %}{% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+</div>

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}Settings · timeshifter{% endblock %}
+{% block body %}
+<div class="mb-4">
+  <h1 class="text-base font-semibold">Settings</h1>
+  <p class="text-[13px] text-base-content/50">Saved in {{ config_dir }}/timeshifter.db.</p>
+</div>
+
+<form method="post" class="max-w-3xl space-y-6">
+  {% call m::error_box(error) %}{% endcall %}
+  {% if saved %}<div data-flash class="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-[13px] text-success">Saved</div>{% endif %}
+
+  <section class="card p-4">
+    <h2 class="label">Provider</h2>
+    <p class="-mt-1 mb-4 text-xs text-base-content/45">An Xtream Codes login, the kind with a server address, username and password.</p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="field sm:col-span-2"><span class="field-label">Server address</span>
+        <input name="url" value="{{ s.url }}" placeholder="http://my-provider.com:8080" autocomplete="off" class="input">
+        <span class="hint">Include the port if it has one.</span>
+      </label>
+      <label class="field"><span class="field-label">Username</span>
+        <input name="username" value="{{ s.username }}" autocomplete="off" class="input">
+      </label>
+      <label class="field"><span class="field-label">Password</span>
+        <input name="password" type="password" autocomplete="new-password" placeholder="{% if has_password %}Saved. Type to change it.{% endif %}" class="input">
+      </label>
+    </div>
+    <details class="mt-4 text-[13px]">
+      <summary class="cursor-pointer text-base-content/55 hover:text-base-content">Advanced</summary>
+      <div class="mt-3 grid gap-4 sm:grid-cols-2">
+        <label class="field"><span class="field-label">Catchup URL style</span>
+          <select name="timeshift_mode" class="input">
+            <option value="path" {% if !php %}selected{% endif %}>Path (most providers)</option>
+            <option value="php" {% if php %}selected{% endif %}>timeshift.php (some older ones)</option>
+          </select>
+          <span class="hint">Try the other one if downloads fail with a login that works.</span>
+        </label>
+        <label class="field"><span class="field-label">User agent</span>
+          <input name="user_agent" value="{{ s.user_agent }}" class="input">
+          <span class="hint">Many providers cut off clients that don't look like a real player.</span>
+        </label>
+      </div>
+    </details>
+    <div class="mt-4 flex flex-wrap items-start gap-3 border-t border-base-300 pt-4">
+      <button formaction="/settings/test" data-result="#test-result" class="btn">Test connection</button>
+      <div id="test-result" class="min-w-0 flex-1"></div>
+    </div>
+  </section>
+
+  <section class="card p-4">
+    <h2 class="label">Downloads</h2>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="field sm:col-span-2"><span class="field-label">Download folder</span>
+        <input name="download_dir" value="{{ s.download_dir }}" placeholder="/catchup" class="input font-mono text-[12px] sm:text-[12px]">
+        {% if let Some(note) = folder_note %}<span class="hint text-warning/90">{{ note }}</span>{% else %}<span class="hint">In Docker, this is wherever you mounted your recordings folder.</span>{% endif %}
+      </label>
+      <label class="field sm:col-span-2"><span class="field-label">Filename</span>
+        <input name="filename_template" value="{{ s.filename_template }}" class="input font-mono text-[12px] sm:text-[12px]">
+        <span class="hint">Fills in {channel} {title} {date} {time} {datetime} {year} {month} {day} {ext}. Folders are fine, like {channel}/{title} {date}.{ext}</span>
+      </label>
+      <div class="field sm:col-span-2"><span class="field-label">Remove from titles</span>
+        {% call m::words("filename_strip", strip, "ᴸᶦᵛᵉ") %}{% endcall %}
+        <span class="hint">Junk the guide adds to titles. Only changes the filename. Changing it changes filenames, so subscriptions may download shows again under the new name.</span>
+      </div>
+      <label class="field"><span class="field-label">Start early</span>
+        <input name="padding_before" inputmode="numeric" value="{{ s.padding_before }}" class="input tabular-nums">
+        <span class="hint">Minutes, in case the guide times are off.</span>
+      </label>
+      <label class="field"><span class="field-label">Keep going after</span>
+        <input name="padding_after" inputmode="numeric" value="{{ s.padding_after }}" class="input tabular-nums">
+        <span class="hint">A negative number records less.</span>
+      </label>
+    </div>
+    <div class="mt-4 space-y-2.5 border-t border-base-300 pt-4 text-[13px]">
+      <label class="flex items-start gap-2.5"><input type="checkbox" name="set_aired_time" {% if s.set_aired_time %}checked{% endif %} class="mt-0.5 size-4 accent-primary"><span>Date files by when they aired<span class="hint mt-0">So a media library sorts them by air date, not download date.</span></span></label>
+      <label class="flex items-start gap-2.5"><input type="checkbox" name="write_nfo" {% if s.write_nfo %}checked{% endif %} class="mt-0.5 size-4 accent-primary"><span>Write a .nfo next to each recording<span class="hint mt-0">Emby, Jellyfin, Kodi and Silo read the title, plot and air date from it. It's a movie .nfo, so use a Movies library.</span></span></label>
+      <label class="flex items-start gap-2.5"><input type="checkbox" name="comskip" {% if s.comskip %}checked{% endif %} class="mt-0.5 size-4 accent-primary"><span>Find ad breaks with comskip<span class="hint mt-0">Writes a .edl that media servers use to skip them. Runs after each download, and on recordings you already have.</span></span></label>
+    </div>
+  </section>
+
+  <section class="card p-4">
+    <h2 class="label">Checking the guide</h2>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="field"><span class="field-label">Check every</span>
+        <span class="relative block"><input name="poll_interval_minutes" inputmode="numeric" value="{{ s.poll_interval_minutes }}" class="input pr-12 tabular-nums"><span class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-base-content/40">min</span></span>
+      </label>
+      <label class="field"><span class="field-label">Extra wait</span>
+        <span class="relative block"><input name="ready_grace_minutes" inputmode="numeric" value="{{ s.ready_grace_minutes }}" class="input pr-12 tabular-nums"><span class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-base-content/40">min</span></span>
+        <span class="hint">After a show ends, if your provider is slow to make catchup available.</span>
+      </label>
+    </div>
+  </section>
+
+  <div class="sticky bottom-4 flex justify-end">
+    <button class="btn btn-primary shadow-lg shadow-black/40">Save settings</button>
+  </div>
+</form>
+{% endblock %}
