@@ -206,6 +206,11 @@ for (const type of ["input", "change"]) {
   });
 }
 
+// Dropdowns marked data-navigate go to the page named by the option picked.
+document.addEventListener("change", (e) => {
+  if (e.target.matches?.("select[data-navigate]")) location.href = e.target.value;
+});
+
 // List fields, like "Title contains", have a box per word with + and × to add and remove boxes.
 function addWord(row) {
   const copy = row.cloneNode(true);

@@ -1,19 +1,30 @@
 use std::path::Path;
 
 use askama::Template;
-use axum::extract::{Query, State};
+use axum::extract::{Path as UrlPath, Query, State};
 use axum::response::Response;
 use axum_extra::extract::Form;
 use serde::Deserialize;
 
 use super::{AppStateRef, Chrome, boxes, chrome, filled, render, see_other, words};
 use crate::AppState;
+use crate::presets::{self, Preset};
 use crate::settings::{Settings, TimeshiftMode};
 use crate::xtream;
 
 #[derive(Deserialize)]
 pub struct PageQuery {
     saved: Option<String>,
+    /// The preset to show opened, after adding or saving it.
+    preset: Option<i64>,
+}
+
+/// A preset as the Settings page shows it.
+struct PresetCard {
+    preset: Preset,
+    open: bool,
+    saved: bool,
+    error: Option<String>,
 }
 
 #[derive(Template)]
@@ -28,6 +39,7 @@ struct Page {
     folder_note: Option<String>,
     config_dir: String,
     strip: Vec<String>,
+    presets: Vec<PresetCard>,
 }
 
 fn folder_note(settings: &Settings) -> Option<String> {
@@ -45,9 +57,37 @@ fn folder_note(settings: &Settings) -> Option<String> {
     None
 }
 
+/// What happened to one preset, to show on its card.
+#[derive(Default)]
+struct PresetNote {
+    open: Option<i64>,
+    saved: bool,
+    error: Option<String>,
+    /// What was typed, when it couldn't be saved.
+    typed: Option<Preset>,
+}
+
 async fn page_with(state: &AppState, s: Settings, saved: bool, error: Option<String>) -> Response {
+    page_with_presets(state, s, saved, error, PresetNote::default()).await
+}
+
+async fn page_with_presets(state: &AppState, s: Settings, saved: bool, error: Option<String>, note: PresetNote) -> Response {
     let has_password = !state.db.settings().await.password.is_empty();
+    let presets = state.db.call(|conn| presets::all(conn)).await.unwrap_or_default();
+    let presets = presets
+        .into_iter()
+        .map(|p| {
+            let here = note.open == Some(p.id);
+            PresetCard {
+                preset: note.typed.clone().filter(|_| here).unwrap_or(p),
+                open: here,
+                saved: here && note.saved,
+                error: note.error.clone().filter(|_| here),
+            }
+        })
+        .collect();
     render(Page {
+        presets,
         chrome: chrome(state, "settings").await,
         folder_note: folder_note(&s),
         config_dir: state.config_dir.display().to_string(),
@@ -62,7 +102,91 @@ async fn page_with(state: &AppState, s: Settings, saved: bool, error: Option<Str
 
 pub async fn page(State(state): AppStateRef, Query(q): Query<PageQuery>) -> Response {
     let settings = state.db.settings().await;
-    page_with(&state, settings, q.saved.is_some(), None).await
+    match q.preset {
+        Some(id) => {
+            let note = PresetNote { open: Some(id), saved: q.saved.is_some(), ..PresetNote::default() };
+            page_with_presets(&state, settings, false, None, note).await
+        }
+        None => page_with(&state, settings, q.saved.is_some(), None).await,
+    }
+}
+
+#[derive(Deserialize, Default)]
+pub struct PresetForm {
+    name: Option<String>,
+    filename_template: Option<String>,
+    padding_before: Option<String>,
+    padding_after: Option<String>,
+    write_nfo: Option<String>,
+    comskip: Option<String>,
+    nfo_title: Option<String>,
+    nfo_plot: Option<String>,
+    nfo_set: Option<String>,
+}
+
+fn preset_from(form: &PresetForm, id: i64) -> Result<Preset, String> {
+    let minutes = |v: &Option<String>, name: &str| -> Result<Option<i64>, String> {
+        filled(v).map(|v| v.parse().map_err(|_| format!("{name} has to be a whole number of minutes"))).transpose()
+    };
+    let text = |v: &Option<String>| filled(v).unwrap_or_default();
+    let preset = Preset {
+        id,
+        name: text(&form.name),
+        filename_template: text(&form.filename_template),
+        padding_before: minutes(&form.padding_before, "Start early")?,
+        padding_after: minutes(&form.padding_after, "Keep going after")?,
+        write_nfo: form.write_nfo.is_some(),
+        comskip: form.comskip.is_some(),
+        nfo_title: text(&form.nfo_title),
+        nfo_plot: text(&form.nfo_plot),
+        nfo_set: text(&form.nfo_set),
+        ..Preset::default()
+    };
+    if preset.name.is_empty() {
+        return Err("Give it a name".into());
+    }
+    Ok(preset)
+}
+
+/// Starts a preset with the same .nfo and comskip choices as the settings.
+pub async fn preset_new(State(state): AppStateRef) -> Response {
+    let settings = state.db.settings().await;
+    let preset = Preset { name: "New preset".into(), write_nfo: settings.write_nfo, comskip: settings.comskip, ..Preset::default() };
+    match state.db.call(move |conn| presets::add(conn, &preset)).await {
+        Ok(id) => see_other(&format!("/settings?preset={id}#preset-{id}")),
+        Err(e) => page_with(&state, settings, false, Some(format!("Couldn't add a preset: {e:#}"))).await,
+    }
+}
+
+pub async fn preset_save(State(state): AppStateRef, UrlPath(id): UrlPath<i64>, Form(form): Form<PresetForm>) -> Response {
+    let preset = match preset_from(&form, id) {
+        Ok(p) => p,
+        Err(error) => {
+            let typed = Preset {
+                id,
+                name: filled(&form.name).unwrap_or_default(),
+                filename_template: filled(&form.filename_template).unwrap_or_default(),
+                nfo_title: filled(&form.nfo_title).unwrap_or_default(),
+                nfo_plot: filled(&form.nfo_plot).unwrap_or_default(),
+                nfo_set: filled(&form.nfo_set).unwrap_or_default(),
+                write_nfo: form.write_nfo.is_some(),
+                comskip: form.comskip.is_some(),
+                ..Preset::default()
+            };
+            let note = PresetNote { open: Some(id), error: Some(error), typed: Some(typed), ..PresetNote::default() };
+            return page_with_presets(&state, state.db.settings().await, false, None, note).await;
+        }
+    };
+    if let Err(e) = state.db.call(move |conn| presets::update(conn, &preset)).await {
+        let note = PresetNote { open: Some(id), error: Some(format!("Couldn't save: {e:#}")), ..PresetNote::default() };
+        return page_with_presets(&state, state.db.settings().await, false, None, note).await;
+    }
+    see_other(&format!("/settings?preset={id}&saved=1#preset-{id}"))
+}
+
+pub async fn preset_delete(State(state): AppStateRef, UrlPath(id): UrlPath<i64>) -> Response {
+    let _ = state.db.call(move |conn| presets::delete(conn, id)).await;
+    see_other("/settings#presets")
 }
 
 #[derive(Deserialize, Default)]

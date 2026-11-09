@@ -153,7 +153,41 @@ fn sanitize(name: &str) -> String {
     tidy_spaces(&swapped).chars().take(120).collect()
 }
 
+/// The words templates fill in themselves. Any other {word} is one a preset made up, and
+/// gets typed in on the download page.
+const BUILT_IN_WORDS: &[&str] = &["channel", "title", "description", "date", "time", "datetime", "year", "month", "day", "ext"];
+
+/// Words made up in a preset, like {event}, paired with what was typed for each.
+pub type Fields = [(String, String)];
+
+fn typed<'a>(fields: &'a Fields, key: &str) -> Option<&'a str> {
+    fields.iter().find(|(k, v)| k == key && !v.trim().is_empty()).map(|(_, v)| v.trim())
+}
+
+/// The made up {words} in some templates, in the order they first appear.
+pub fn custom_words(templates: &[&str]) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for template in templates {
+        let mut rest = *template;
+        while let Some(open) = rest.find('{') {
+            rest = &rest[open + 1..];
+            let len = rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap_or(rest.len());
+            let word = &rest[..len];
+            if !word.is_empty() && rest[len..].starts_with('}') && !BUILT_IN_WORDS.contains(&word) && !found.iter().any(|f| f == word) {
+                found.push(word.to_string());
+            }
+        }
+    }
+    found
+}
+
 pub fn output_filename(channel: &str, program: &Program, template: &str, strip: &[String]) -> Result<String> {
+    filename_with_fields(channel, program, template, strip, &[])
+}
+
+/// Fills in a filename template, including any made up words. A word left blank stays as
+/// {word}, so it's obvious in the preview.
+pub fn filename_with_fields(channel: &str, program: &Program, template: &str, strip: &[String], fields: &Fields) -> Result<String> {
     let at = parse_local(&program.start_local)?;
     let date = at.format("%Y-%m-%d").to_string();
     let time = at.format("%H-%M").to_string();
@@ -168,7 +202,7 @@ pub fn output_filename(channel: &str, program: &Program, template: &str, strip: 
             "month" => at.format("%m").to_string(),
             "day" => at.format("%d").to_string(),
             "ext" => "ts".into(),
-            _ => return None,
+            _ => return typed(fields, key).map(sanitize),
         })
     };
     Ok(fill(template, token))
@@ -264,6 +298,12 @@ pub struct Nfo {
 impl Nfo {
     /// The details from the .nfo templates in Settings.
     pub fn from_settings(settings: &Settings, channel: &str, program: &Program) -> Nfo {
+        let templates = Nfo { title: settings.nfo_title.clone(), plot: settings.nfo_plot.clone(), set: settings.nfo_set.clone() };
+        Nfo::from_templates(&templates, channel, program, &[])
+    }
+
+    /// Fills in .nfo templates, including any made up words.
+    pub fn from_templates(templates: &Nfo, channel: &str, program: &Program, fields: &Fields) -> Nfo {
         let at = parse_local(&program.start_local).ok();
         let when = |format: &str| at.map(|at| at.format(format).to_string()).unwrap_or_default();
         let token = |key: &str| -> Option<String> {
@@ -276,11 +316,11 @@ impl Nfo {
                 "year" => when("%Y"),
                 "month" => when("%m"),
                 "day" => when("%d"),
-                _ => return None,
+                _ => return typed(fields, key).map(str::to_string),
             })
         };
         let tidy = |template: &str| fill(template, token).trim().to_string();
-        Nfo { title: tidy(&settings.nfo_title), plot: tidy(&settings.nfo_plot), set: tidy(&settings.nfo_set) }
+        Nfo { title: tidy(&templates.title), plot: tidy(&templates.plot), set: tidy(&templates.set) }
     }
 }
 
@@ -424,6 +464,22 @@ pub mod tests {
         assert_eq!(name("{channel}/{title}.{ext}", "NASA TV", &p, &[]), "NASA TV/Artemis II Launch.ts");
         assert_eq!(name("{year}/{month}/{day} {title}.{ext}", "NASA TV", &p, &[]), "2024/03/10 Artemis II Launch.ts");
         assert_eq!(name("{channel} {bogus} {", "NASA TV", &p, &[]), "NASA TV {bogus} {");
+    }
+
+    #[test]
+    fn fills_made_up_words() {
+        let p = program("Artemis II");
+        let fields = [("mission".to_string(), "Lunar/Flyby".to_string()), ("stage".to_string(), " ".to_string())];
+        let name = filename_with_fields("NASA TV", &p, "NASA/{year}/{mission}: {stage}.{ext}", &[], &fields).unwrap();
+        assert_eq!(name, "NASA/2024/Lunar-Flyby: {stage}.ts");
+        let templates = Nfo { title: "{title}: {mission}".into(), plot: String::new(), set: "{mission}".into() };
+        let nfo = Nfo::from_templates(&templates, "NASA TV", &p, &fields);
+        assert_eq!((nfo.title.as_str(), nfo.set.as_str()), ("Artemis II: Lunar/Flyby", "Lunar/Flyby"));
+    }
+
+    #[test]
+    fn finds_made_up_words() {
+        assert_eq!(custom_words(&["{channel}/{mission} {year}", "{title}: {stage} {mission}", "{ bad} {"]), ["mission", "stage"]);
     }
 
     #[test]

@@ -113,4 +113,51 @@
     <button class="btn btn-primary shadow-lg shadow-black/40">Save settings</button>
   </div>
 </form>
+
+<section id="presets" class="card mt-6 max-w-3xl p-4">
+  <h2 class="label">Presets</h2>
+  <p class="-mt-1 mb-3 text-xs text-base-content/45">Pick one on the download page to fill in the filename and .nfo, for shows the guide doesn't describe well. Make up any word you like, such as {event}, and the download page gives it a box to type in. Anything left empty uses the settings above.</p>
+  {% for card in presets %}
+    {% let p = card.preset %}
+    <details id="preset-{{ p.id }}" class="border-t border-base-300 py-3 text-[13px]" {% if card.open %}open{% endif %}>
+      <summary class="cursor-pointer font-medium">{{ p.name }}</summary>
+      <form method="post" action="/presets/{{ p.id }}" class="mt-3 grid gap-4 sm:grid-cols-2">
+        {% call m::error_box(card.error) %}{% endcall %}
+        {% if card.saved %}<div data-flash class="rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-[13px] text-success sm:col-span-2">Saved</div>{% endif %}
+        <label class="field sm:col-span-2"><span class="field-label">Name</span>
+          <input name="name" value="{{ p.name }}" class="input">
+        </label>
+        <label class="field sm:col-span-2"><span class="field-label">Filename</span>
+          <input name="filename_template" value="{{ p.filename_template }}" placeholder="{{ s.filename_template }}" class="input font-mono text-[12px] sm:text-[12px]">
+        </label>
+        <label class="field"><span class="field-label">Start early</span>
+          <input name="padding_before" inputmode="numeric" value="{% if let Some(n) = p.padding_before %}{{ n }}{% endif %}" placeholder="{{ s.padding_before }}" class="input tabular-nums">
+        </label>
+        <label class="field"><span class="field-label">Keep going after</span>
+          <input name="padding_after" inputmode="numeric" value="{% if let Some(n) = p.padding_after %}{{ n }}{% endif %}" placeholder="{{ s.padding_after }}" class="input tabular-nums">
+        </label>
+        <label class="field sm:col-span-2"><span class="field-label">.nfo title</span>
+          <input name="nfo_title" value="{{ p.nfo_title }}" placeholder="{{ s.nfo_title }}" class="input font-mono text-[12px] sm:text-[12px]">
+        </label>
+        <label class="field sm:col-span-2"><span class="field-label">.nfo plot</span>
+          <input name="nfo_plot" value="{{ p.nfo_plot }}" placeholder="{{ s.nfo_plot }}" class="input font-mono text-[12px] sm:text-[12px]">
+        </label>
+        <label class="field sm:col-span-2"><span class="field-label">.nfo collection</span>
+          <input name="nfo_set" value="{{ p.nfo_set }}" placeholder="{{ s.nfo_set }}" class="input font-mono text-[12px] sm:text-[12px]">
+        </label>
+        <div class="flex flex-wrap gap-x-6 gap-y-2 sm:col-span-2">
+          <label class="flex items-center gap-2"><input type="checkbox" name="write_nfo" {% if p.write_nfo %}checked{% endif %} class="size-4 accent-primary"> Write a .nfo</label>
+          <label class="flex items-center gap-2"><input type="checkbox" name="comskip" {% if p.comskip %}checked{% endif %} class="size-4 accent-primary"> Find ad breaks with comskip</label>
+        </div>
+        <div class="flex items-center gap-3 sm:col-span-2">
+          <button class="btn btn-primary">Save preset</button>
+          <button formaction="/presets/{{ p.id }}/delete" formnovalidate class="btn btn-danger ml-auto">Delete</button>
+        </div>
+      </form>
+    </details>
+  {% endfor %}
+  <form method="post" action="/presets/new" class="border-t border-base-300 pt-3">
+    <button class="btn">Add preset</button>
+  </form>
+</section>
 {% endblock %}

@@ -12,6 +12,7 @@ use crate::settings::Settings;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_initial.sql"),
     include_str!("../migrations/0002_starred_channels.sql"),
+    include_str!("../migrations/0003_presets.sql"),
 ];
 
 /// The one SQLite connection, shared by every request and job. A single connection means

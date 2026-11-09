@@ -6,6 +6,7 @@ mod import;
 mod jobs;
 mod live;
 mod plan;
+mod presets;
 mod recording;
 mod scheduled;
 mod settings;

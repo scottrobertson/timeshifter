@@ -12,8 +12,8 @@
 
     {% if can_download && can_schedule %}
       <div class="mt-5 inline-flex rounded-md border border-base-300 text-[13px]">
-        <a href="?start={{ start }}&mode=download" class="px-3 py-1.5 {% if !schedule %}bg-base-300{% else %}text-base-content/60 hover:text-base-content{% endif %}" title="Download what has aired so far">Download now</a>
-        <a href="?start={{ start }}&mode=schedule" class="px-3 py-1.5 {% if schedule %}bg-base-300{% else %}text-base-content/60 hover:text-base-content{% endif %}" title="Wait for it to finish, then download the whole thing">Schedule</a>
+        <a href="{{ mode_href("download") }}" class="px-3 py-1.5 {% if !schedule %}bg-base-300{% else %}text-base-content/60 hover:text-base-content{% endif %}" title="Download what has aired so far">Download now</a>
+        <a href="{{ mode_href("schedule") }}" class="px-3 py-1.5 {% if schedule %}bg-base-300{% else %}text-base-content/60 hover:text-base-content{% endif %}" title="Wait for it to finish, then download the whole thing">Schedule</a>
       </div>
     {% endif %}
 
@@ -22,39 +22,63 @@
       <input type="hidden" name="start" value="{{ start }}">
       <input type="hidden" name="mode" value="{% if schedule %}schedule{% else %}download{% endif %}">
       <input type="hidden" name="form" value="1">
+      <input type="hidden" name="preset" value="{{ preset_id }}">
+      {% if !presets.is_empty() %}
+        <label class="field"><span class="field-label">Preset</span>
+          <select data-navigate class="input">
+            {% for o in presets %}<option value="{{ o.href }}" {% if o.selected %}selected{% endif %}>{{ o.name }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      {% for f in fields %}
+        <label class="field"><span class="field-label">{{ f.label }}</span>
+          <input type="hidden" name="field_name" value="{{ f.name }}">
+          <input name="field_value" value="{{ f.value }}" list="field-{{ f.name }}" autocomplete="off" class="input">
+          <datalist id="field-{{ f.name }}">{% for s in f.suggestions %}<option value="{{ s }}">{% endfor %}</datalist>
+        </label>
+      {% endfor %}
+      {% if !preset_id.is_empty() %}
+      <details class="border-t border-base-300 pt-4 text-[13px]">
+        <summary class="cursor-pointer text-base-content/55 hover:text-base-content">Details</summary>
+        <div class="mt-4 space-y-4">
+      {% endif %}
       <div class="grid grid-cols-2 gap-4">
         <label class="field"><span class="field-label">Start early</span>
-          <span class="relative block"><input name="padding_before" inputmode="numeric" value="{{ plan.padding_before }}" class="input pr-12 tabular-nums"><span class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-base-content/40">min</span></span>
+          <span class="relative block"><input name="padding_before" inputmode="numeric" value="{{ b.padding_before }}" class="input pr-12 tabular-nums"><span class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-base-content/40">min</span></span>
         </label>
         <label class="field"><span class="field-label">Keep going after</span>
-          <span class="relative block"><input name="padding_after" inputmode="numeric" value="{{ plan.padding_after }}" class="input pr-12 tabular-nums"><span class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-base-content/40">min</span></span>
+          <span class="relative block"><input name="padding_after" inputmode="numeric" value="{{ b.padding_after }}" class="input pr-12 tabular-nums"><span class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-base-content/40">min</span></span>
         </label>
         <span class="hint col-span-2 -mt-2">In case the guide times are off. A negative number records less.</span>
       </div>
       <label class="field"><span class="field-label">Filename</span>
-        <input name="filename" value="{{ plan.filename }}" placeholder="{{ default_filename }}" class="input font-mono text-[12px] sm:text-[12px]">
+        <input name="filename" value="{{ b.filename }}" placeholder="{{ default_filename }}" class="input font-mono text-[12px] sm:text-[12px]">
         <span class="hint">Relative to your download folder. Folders are fine, like NASA/{{ program.title }}.ts</span>
       </label>
       <div class="flex flex-wrap gap-x-6 gap-y-2 text-[13px]">
-        <label class="flex items-center gap-2"><input type="checkbox" name="write_nfo" {% if plan.write_nfo %}checked{% endif %} class="size-4 accent-primary"> Write a .nfo for media servers</label>
-        <label class="flex items-center gap-2"><input type="checkbox" name="comskip" {% if plan.comskip %}checked{% endif %} class="size-4 accent-primary"> Find ad breaks with comskip</label>
+        <label class="flex items-center gap-2"><input type="checkbox" name="write_nfo" {% if b.write_nfo %}checked{% endif %} class="size-4 accent-primary"> Write a .nfo for media servers</label>
+        <label class="flex items-center gap-2"><input type="checkbox" name="comskip" {% if b.comskip %}checked{% endif %} class="size-4 accent-primary"> Find ad breaks with comskip</label>
       </div>
       <div class="space-y-4 border-t border-base-300 pt-4">
         <div>
           <h2 class="label">.nfo</h2>
-          <p class="-mt-1 text-xs text-base-content/45">What media servers show for it. Filled in from the .nfo templates in Settings.</p>
+          <p class="-mt-1 text-xs text-base-content/45">What media servers show for it. Filled in from {% if preset_id.is_empty() %}the .nfo templates in Settings{% else %}the preset{% endif %}.</p>
         </div>
         <label class="field"><span class="field-label">Title</span>
-          <input name="nfo_title" value="{{ nfo.title }}" placeholder="{{ program.title }}" class="input">
+          <input name="nfo_title" value="{{ b.nfo.title }}" placeholder="{{ program.title }}" class="input">
         </label>
         <label class="field"><span class="field-label">Plot</span>
-          <textarea name="nfo_plot" rows="4" class="input">{{ nfo.plot }}</textarea>
+          <textarea name="nfo_plot" rows="4" class="input">{{ b.nfo.plot }}</textarea>
         </label>
         <label class="field"><span class="field-label">Collection</span>
-          <input name="nfo_set" value="{{ nfo.set }}" class="input">
+          <input name="nfo_set" value="{{ b.nfo.set }}" class="input">
           <span class="hint">Groups it with others in the same collection.</span>
         </label>
       </div>
+      {% if !preset_id.is_empty() %}
+        </div>
+      </details>
+      {% endif %}
       <div class="flex items-center gap-3 border-t border-base-300 pt-4">
         {% if schedule %}
           <button class="btn btn-primary">Schedule</button>
