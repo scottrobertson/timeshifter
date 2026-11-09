@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}{% if id > 0 %}{{ form.get("name") }}{% else %}New subscription{% endif %} · timeshifter{% endblock %}
+{% block body %}
+{% call m::back("/subscriptions", "Subscriptions") %}{% endcall %}
+<h1 class="mb-4 text-base font-semibold">{% if id > 0 %}{{ form.get("name") }}{% else %}New subscription{% endif %}</h1>
+
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+  <form method="post" data-preview="#sub-matches" class="card space-y-5 p-4">
+    {% call m::error_box(error) %}{% endcall %}
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="field"><span class="field-label">Name</span>
+        <input name="name" value="{{ form.get("name") }}" placeholder="NASA launches" class="input" required>
+      </label>
+      <label class="field"><span class="field-label">Channel</span>
+        <input name="channel" value="{{ form.get("channel") }}" placeholder="NASA TV" list="channel-names" autocomplete="off" class="input" required>
+        <datalist id="channel-names">{% for c in channels %}<option value="{{ c }}">{% endfor %}</datalist>
+        <span class="hint">The name as it shows in the channel list.</span>
+      </label>
+    </div>
+    <div class="field"><span class="field-label">Title contains</span>
+      {% call m::words("title_contains", form.values("title_contains"), "Launch") %}{% endcall %}
+      <span class="hint">Every one of these has to be in the title. Case doesn't matter.</span>
+    </div>
+    <div class="field"><span class="field-label">But not</span>
+      {% call m::words("title_excludes", form.values("title_excludes"), "Replay") %}{% endcall %}
+      <span class="hint">Skip titles with any of these.</span>
+    </div>
+    <label class="field sm:w-1/2"><span class="field-label">From</span>
+      <input name="from" value="{{ form.get("from") }}" placeholder="2026-06-01" class="input">
+      <span class="hint">Only shows that finish after this date. Leave it empty to take everything in the archive.</span>
+    </label>
+
+    <div class="border-t border-base-300 pt-4">
+      <h2 class="label">Recording</h2>
+      <p class="-mt-1 mb-3 text-xs text-base-content/45">Leave these empty to use what's in Settings.</p>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="field"><span class="field-label">Start early</span>
+          <input name="padding_before" inputmode="numeric" value="{{ form.get("padding_before") }}" placeholder="{{ defaults.padding_before }} min" class="input tabular-nums">
+        </label>
+        <label class="field"><span class="field-label">Keep going after</span>
+          <input name="padding_after" inputmode="numeric" value="{{ form.get("padding_after") }}" placeholder="{{ defaults.padding_after }} min" class="input tabular-nums">
+        </label>
+        <label class="field sm:col-span-2"><span class="field-label">Filename</span>
+          <input name="filename_template" value="{{ form.get("filename_template") }}" placeholder="{{ defaults.filename_template }}" class="input font-mono text-[12px] sm:text-[12px]">
+          <span class="hint">Use a folder to keep these together, like NASA/{title} {date}.{ext}</span>
+        </label>
+        <div class="field sm:col-span-2"><span class="field-label">Remove from titles</span>
+          {% call m::words("filename_strip", form.values("filename_strip"), strip_placeholder) %}{% endcall %}
+          <span class="hint">Junk the guide adds to titles. Only changes the filename. Leave it empty to use what's in Settings.</span>
+        </div>
+        <label class="field"><span class="field-label">.nfo</span>
+          <select name="write_nfo" class="input">
+            <option value="" {% if form.get("write_nfo").is_empty() %}selected{% endif %}>Like Settings ({% if defaults.write_nfo %}on{% else %}off{% endif %})</option>
+            <option value="on" {% if form.get("write_nfo") == "on" %}selected{% endif %}>On</option>
+            <option value="off" {% if form.get("write_nfo") == "off" %}selected{% endif %}>Off</option>
+          </select>
+        </label>
+        <label class="field"><span class="field-label">comskip</span>
+          <select name="comskip" class="input">
+            <option value="" {% if form.get("comskip").is_empty() %}selected{% endif %}>Like Settings ({% if defaults.comskip %}on{% else %}off{% endif %})</option>
+            <option value="on" {% if form.get("comskip") == "on" %}selected{% endif %}>On</option>
+            <option value="off" {% if form.get("comskip") == "off" %}selected{% endif %}>Off</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3 border-t border-base-300 pt-4">
+      <button class="btn btn-primary">{% if id > 0 %}Save{% else %}Add subscription{% endif %}</button>
+      <a href="/subscriptions" class="btn btn-ghost">Cancel</a>
+      {% if id > 0 %}
+        <button formaction="/subscriptions/{{ id }}/delete" formnovalidate class="btn btn-danger ml-auto" title="Recordings it already downloaded stay where they are">Delete</button>
+      {% endif %}
+    </div>
+  </form>
+
+  <aside>
+    <h2 class="label">In the guide now</h2>
+    <div id="sub-matches">{{ matches|safe }}</div>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% import "macros.html" as m %}
+{% if !active.is_empty() %}
+  <h2 class="label">Running and waiting</h2>
+  <ul class="card mb-6" data-poll="2000">
+    {% for j in active %}{% call m::job_row(j) %}{% endcall %}{% endfor %}
+  </ul>
+{% endif %}
+<h2 class="label">Finished</h2>
+{% if finished.is_empty() %}
+  {% if kind == "problems" %}
+    {% call m::empty("No problems", "Nothing has failed in the last two weeks.") %}{% endcall %}
+  {% else %}
+    {% call m::empty("Nothing yet", "Jobs show up here once they've run. They're kept for two weeks.") %}{% endcall %}
+  {% endif %}
+{% else %}
+  <ul class="card">
+    {% for j in finished %}{% call m::job_row(j) %}{% endcall %}{% endfor %}
+  </ul>
+{% endif %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}{{ channel.name }} · timeshifter{% endblock %}
+{% block body %}
+{% call m::back("/channels", "Channels") %}{% endcall %}
+<div class="mb-4 flex flex-wrap items-end gap-x-4 gap-y-3">
+  <div class="min-w-0">
+    <h1 class="truncate text-base font-semibold">{{ channel.name }}</h1>
+    <p class="text-[13px] text-base-content/50">
+      {{ channel.archive_days }} day archive{% if let Some(group) = channel.group %} · {{ group }}{% endif %}{% if !timezone.is_empty() %} · times are {{ timezone }}{% endif %}
+    </p>
+  </div>
+  <div class="ml-auto flex rounded-md border border-base-300 text-[13px]">
+    <a href="/channels/{{ channel.stream_id }}" class="px-3 py-1.5 {% if !upcoming %}bg-base-300{% else %}text-base-content/60 hover:text-base-content{% endif %}">Archive</a>
+    <a href="/channels/{{ channel.stream_id }}?view=upcoming" class="px-3 py-1.5 {% if upcoming %}bg-base-300{% else %}text-base-content/60 hover:text-base-content{% endif %}">Coming up</a>
+  </div>
+</div>
+<input data-filter type="search" autocomplete="off" placeholder="Filter shows  /" class="input mb-4 sm:w-72">
+<div data-src="{{ src }}" data-refresh-on="jobs">{{ body|safe }}</div>
+{% endblock %}

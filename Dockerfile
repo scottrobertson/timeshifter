@@ -1,16 +1,29 @@
-# Build stage: compile TypeScript to plain JS using the full dev toolchain.
-FROM node:26-bookworm-slim AS builder
+# Pinned to match .tool-versions.
+FROM rust:1.99-trixie AS build
+ARG TAILWIND_VERSION=v4.3.3
+ARG TARGETARCH
+RUN case "$TARGETARCH" in arm64) arch=arm64 ;; *) arch=x64 ;; esac \
+ && curl -fsSL -o /usr/local/bin/tailwindcss \
+    "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-${arch}" \
+ && chmod +x /usr/local/bin/tailwindcss
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY tsconfig.json tsconfig.build.json ./
-COPY src ./src
-RUN npm run build
+# Build the dependencies against an empty main first, so Docker can cache them and a
+# code change only recompiles timeshifter itself.
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release && rm -rf src
+COPY build.rs ./
+COPY migrations migrations
+COPY src src
+COPY styles styles
+COPY templates templates
+COPY static static
+# Copied files can be older than the placeholder build, so cargo would skip them without the touch.
+RUN touch src/main.rs && cargo build --release
 
-# comskip build stage: build comskip from source. Debian packages both of its
-# awkward deps (argtable2 and the ffmpeg dev libs), so it's a plain apt install
-# plus a standard autotools build.
-FROM node:26-bookworm-slim AS comskip
+# comskip, built from source. Debian packages both of its awkward dependencies, so it's a
+# plain apt install and a standard autotools build. Same Debian as the final image, so the
+# libraries it links against are the ones that ship.
+FROM debian:trixie-slim AS comskip
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates build-essential autoconf automake libtool pkg-config git \
       libargtable2-dev libavformat-dev libavcodec-dev libavutil-dev libswscale-dev \
@@ -22,31 +35,18 @@ RUN git clone --depth 1 https://github.com/erikkaashoek/Comskip /src/comskip \
  && make \
  && cp comskip /usr/local/bin/comskip
 
-# Runtime stage: ffmpeg (remuxes the .ts so it seeks), node, prod deps, output.
-FROM node:26-bookworm-slim
-# tini runs as PID 1 and forwards signals, so Ctrl-C works (node as PID 1 doesn't).
-# tzdata lets the TZ env var resolve, so log timestamps use your local time.
-# libargtable2-0 is comskip's one runtime dep; ffmpeg pulls the libav* libs.
+FROM debian:trixie-slim
+# ffmpeg cleans up each recording so it seeks properly. tini passes signals on, so
+# stopping the container is quick. tzdata lets TZ work for the times on the page.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ffmpeg tini tzdata libargtable2-0 \
+      ca-certificates ffmpeg tini tzdata libargtable2-0 \
  && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-ENV NODE_ENV=production
-
-# Bundled comskip, so "comskip": true works with no extra setup.
 COPY --from=comskip /usr/local/bin/comskip /usr/local/bin/comskip
+COPY --from=build /app/target/release/timeshifter /usr/local/bin/timeshifter
 ENV COMSKIP_PATH=/usr/local/bin/comskip
-
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-COPY --from=builder /app/dist ./dist
-
-# config.json, scheduled.json and comskip.ini are read from here, so mounting one
-# folder is all it takes. Mounting them a file at a time is what leaves you with a
-# directory where scheduled.json should be, because Docker creates one when the
-# file isn't there yet.
+# The database lives here, and an old config.json or scheduled.json in it is imported on
+# first start. Mount one folder, not single files.
 ENV TIMESHIFTER_CONFIG_DIR=/config
 RUN mkdir -p /config
-
-ENTRYPOINT ["/usr/bin/tini", "--", "node", "dist/index.js"]
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/tini", "--", "timeshifter"]

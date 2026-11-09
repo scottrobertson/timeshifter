@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}{{ title }} · timeshifter{% endblock %}
+{% block body %}
+{% call m::back("/jobs", "Jobs") %}{% endcall %}
+<div data-src="/jobs/{{ id }}" data-refresh-on="jobs">{{ body|safe }}</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% macro job_row(j) %}
+<li class="row px-4 py-3">
+  <div class="flex items-center gap-3">
+    <span class="chip tone-{{ j.tone() }} {% if j.running %}pulse{% endif %}">{{ j.status_label }}</span>
+    <a href="/jobs/{{ j.id }}" class="min-w-0 flex-1 truncate font-medium hover:text-primary">{{ j.title }}</a>
+    {% if j.running %}
+      <span class="hidden tabular-nums text-xs text-base-content/45 sm:inline" data-since="{{ j.started_iso }}">{{ j.elapsed }}</span>
+    {% elif j.active %}
+      <span class="hidden text-xs text-base-content/40 sm:inline">waiting</span>
+    {% else %}
+      <span class="hidden tabular-nums text-xs text-base-content/40 sm:inline" title="Took {{ j.took }}" data-ago="{{ j.finished_iso }}">{{ j.finished_ago }}</span>
+    {% endif %}
+    {% if j.active %}
+      <form method="post" action="/jobs/{{ j.id }}/cancel" data-async><button class="btn btn-sm btn-ghost" title="{% if j.kind == "Download" %}Stops the download and deletes the partial file. A subscription will queue it again on the next check.{% else %}Stops this job{% endif %}">Stop</button></form>
+    {% endif %}
+  </div>
+  <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-0.5 text-xs text-base-content/45">
+    {% if j.about.is_empty() %}<span>{{ j.kind }}</span>{% else %}<span class="text-base-content/60">{{ j.about }}</span>{% endif %}<span>·</span><span>{{ j.trigger }}</span>
+    {% if j.running && !j.step.is_empty() %}<span>·</span><span class="text-base-content/70">{{ j.step }}</span>{% endif %}
+    {% if !j.active && !j.error.is_empty() %}<span>·</span><span class="min-w-0 truncate text-error">{{ j.error }}</span>
+    {% elif !j.active && !j.summary.is_empty() %}<span>·</span><span class="min-w-0 truncate text-base-content/65">{{ j.summary }}</span>{% endif %}
+    {% if !j.active && j.warnings > 0 %}<span>·</span><span class="text-warning">{{ j.warnings }} {% if j.warnings == 1 %}warning{% else %}warnings{% endif %}</span>{% endif %}
+  </div>
+  {% if j.running %}
+    {% if let Some(pct) = j.pct %}
+      <div class="mt-2 flex items-center gap-3">
+        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-base-300"><div class="h-full rounded-full bg-primary transition-[width] duration-500" style="width: {{ pct }}%"></div></div>
+        <span class="shrink-0 tabular-nums text-xs text-base-content/55">{{ j.progress }}</span>
+      </div>
+    {% elif !j.progress.is_empty() %}
+      <div class="mt-2 flex items-center gap-3">
+        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-base-300"><div class="h-full w-1/3 rounded-full bg-primary/60 pulse"></div></div>
+        <span class="shrink-0 tabular-nums text-xs text-base-content/55">{{ j.progress }}</span>
+      </div>
+    {% endif %}
+  {% endif %}
+</li>
+{% endmacro %}
+
+{% macro error_box(error) %}
+{% if let Some(error) = error %}
+  <div class="error-box">{{ error }}</div>
+{% endif %}
+{% endmacro %}
+
+{% macro empty(title, text) %}
+<div class="rounded-xl border border-dashed border-base-300 px-6 py-10 text-center">
+  <div class="font-medium">{{ title }}</div>
+  <div class="mx-auto mt-1 max-w-md text-[13px] text-base-content/50">{{ text }}</div>
+</div>
+{% endmacro %}
+
+{# A list of words, one box each. values always has at least one, so there's a box to type in. #}
+{% macro words(name, values, placeholder) %}
+<div class="space-y-2">
+  {% for v in values %}
+    <div class="word">
+      <input name="{{ name }}" value="{{ v }}" {% if loop.first %}placeholder="{{ placeholder }}"{% endif %} class="input flex-1">
+      <button type="button" data-remove class="btn btn-ghost word-btn" title="Remove">×</button>
+      <button type="button" data-add class="btn btn-ghost word-btn" title="Add another">+</button>
+    </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro back(href, label) %}
+<a href="{{ href }}" class="mb-3 inline-flex items-center gap-1 text-[13px] text-base-content/50 hover:text-base-content">← {{ label }}</a>
+{% endmacro %}

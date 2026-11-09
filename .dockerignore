@@ -1,7 +1,9 @@
+target
+app
 node_modules
 dist
 downloads
 config
-.env
+static/style.css
 .git
 *.log

@@ -1,0 +1,48 @@
+<div {% if job.active %}data-poll="1000"{% endif %}>
+  <div class="mb-4 flex flex-wrap items-start gap-3">
+    <div class="min-w-0 flex-1">
+      <h1 class="text-base font-semibold">{{ job.title }}</h1>
+      <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/50">
+        <span class="chip tone-{{ job.tone() }} {% if job.running %}pulse{% endif %}">{{ job.status_label }}</span>
+        <span>{{ job.kind }}</span>{% if !job.about.is_empty() %}<span>·</span><span>{{ job.about }}</span>{% endif %}<span>·</span><span>{{ job.trigger }}</span>
+        {% if let Some(link) = job.link %}<span>·</span><a href="{{ link }}" class="hover:text-base-content">Open the channel →</a>{% endif %}
+      </div>
+    </div>
+    {% if job.active %}
+      <form method="post" action="/jobs/{{ job.id }}/cancel" data-async><button class="btn btn-sm">Stop</button></form>
+    {% elif can_retry %}
+      <form method="post" action="/jobs/{{ job.id }}/retry"><button class="btn btn-sm">Try again</button></form>
+    {% endif %}
+  </div>
+
+  {% if !job.error.is_empty() %}<div class="error-box whitespace-pre-line">{{ job.error }}</div>{% endif %}
+
+  <div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="card px-4 py-3"><div class="text-xs text-base-content/50">Queued</div><div class="tabular-nums">{{ created }}</div></div>
+    <div class="card px-4 py-3"><div class="text-xs text-base-content/50">Started</div><div class="tabular-nums">{% if started.is_empty() %}<span class="text-base-content/40">Not yet</span>{% else %}{{ started }}{% endif %}</div></div>
+    <div class="card px-4 py-3"><div class="text-xs text-base-content/50">{% if job.active %}Running for{% else %}Took{% endif %}</div><div class="tabular-nums">{% if job.running %}<span data-since="{{ job.started_iso }}">{{ job.elapsed }}</span>{% elif job.took.is_empty() %}<span class="text-base-content/40">None</span>{% else %}{{ job.took }}{% endif %}</div></div>
+    <div class="card px-4 py-3"><div class="text-xs text-base-content/50">Finished</div><div class="tabular-nums">{% if finished.is_empty() %}<span class="text-base-content/40">Not yet</span>{% else %}{{ finished }}{% endif %}</div></div>
+  </div>
+
+  {% if job.running %}
+    <div class="card mb-6 px-4 py-3">
+      <div class="mb-2 flex items-center gap-3 text-[13px]"><span class="min-w-0 flex-1 truncate">{{ job.step }}</span><span class="tabular-nums text-base-content/55">{{ job.progress }}</span></div>
+      <div class="h-1.5 overflow-hidden rounded-full bg-base-300">
+        {% if let Some(pct) = job.pct %}<div class="h-full rounded-full bg-primary transition-[width] duration-500" style="width: {{ pct }}%"></div>{% else %}<div class="h-full w-1/3 rounded-full bg-primary/60 pulse"></div>{% endif %}
+      </div>
+    </div>
+  {% elif !job.summary.is_empty() %}
+    <p class="mb-6 text-[13px] text-base-content/70">{{ job.summary }}</p>
+  {% endif %}
+
+  <h2 class="label">Log</h2>
+  {% if log.is_empty() %}
+    <p class="card px-4 py-5 text-[13px] text-base-content/45">{% if job.active %}Nothing logged yet{% else %}Nothing was logged{% endif %}</p>
+  {% else %}
+    <ol class="card overflow-x-auto px-4 py-2 font-mono text-[12px]">
+      {% for l in log %}
+        <li class="flex gap-3 py-0.5"><span class="shrink-0 tabular-nums text-base-content/35">{{ l.at }}</span><span class="{% if l.level == "error" %}text-error{% elif l.level == "warn" %}text-warning{% else %}text-base-content/80{% endif %}">{{ l.message }}</span></li>
+      {% endfor %}
+    </ol>
+  {% endif %}
+</div>

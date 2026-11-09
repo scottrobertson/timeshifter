@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Something went wrong · timeshifter{% endblock %}
+{% block body %}
+<div class="error-box">{{ error }}</div>
+<a href="javascript:history.back()" class="text-[13px] text-base-content/50 hover:text-base-content">← Go back</a>
+{% endblock %}

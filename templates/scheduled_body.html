@@ -1,0 +1,31 @@
+{% import "macros.html" as m %}
+{% if rows.is_empty() %}
+  {% call m::empty("Nothing scheduled", "Open a channel, switch to Coming up, and pick a show that hasn't aired yet.") %}{% endcall %}
+{% else %}
+  <ul class="card">
+    {% for r in rows %}
+      <li class="row flex items-center gap-3 px-4 py-3">
+        <span class="chip tone-{{ r.status }} w-20 justify-center">{{ r.label }}</span>
+        <div class="min-w-0 flex-1">
+          <div class="truncate font-medium">{{ r.title }}</div>
+          <div class="flex flex-wrap gap-x-2 text-xs text-base-content/45">
+            <span>{{ r.channel }}</span><span>·</span><span>{{ r.airs }}</span>
+            {% if r.pending %}
+              <span>·</span>
+              {% if r.ready_passed %}<span class="text-base-content/65">Downloads on the next check</span>{% else %}<span>Ready <span data-until="{{ r.ready_iso }}">{{ r.ready }}</span></span>{% endif %}
+            {% elif !r.output_path.is_empty() %}
+              <span>·</span><span class="min-w-0 truncate font-mono text-[11px]" title="{{ r.output_path }}">{{ r.output_path }}</span>
+            {% elif r.status == "expired" %}
+              <span>·</span><span class="text-warning">Still failing 48 hours after it aired</span>
+            {% endif %}
+          </div>
+        </div>
+        {% if !r.pending && !r.finished_iso.is_empty() %}<span class="hidden text-xs text-base-content/40 sm:inline" data-ago="{{ r.finished_iso }}">{{ r.finished_ago }}</span>{% endif %}
+        <form method="post" action="/scheduled/{{ r.id }}/remove" data-async>
+          <button class="btn btn-sm btn-ghost" title="{% if r.pending %}Don't record this{% else %}Remove it from this list. The recording stays where it is.{% endif %}">Remove</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+  <p class="mt-3 text-xs text-base-content/40">Finished ones drop off this list after 30 days.</p>
+{% endif %}
