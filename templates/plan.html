@@ -42,7 +42,7 @@
       <div class="space-y-4 border-t border-base-300 pt-4">
         <div>
           <h2 class="label">.nfo</h2>
-          <p class="-mt-1 text-xs text-base-content/45">What media servers show for it. Filled in from the guide.</p>
+          <p class="-mt-1 text-xs text-base-content/45">What media servers show for it. Filled in from the .nfo templates in Settings.</p>
         </div>
         <label class="field"><span class="field-label">Title</span>
           <input name="nfo_title" value="{{ nfo.title }}" placeholder="{{ program.title }}" class="input">
@@ -50,16 +50,10 @@
         <label class="field"><span class="field-label">Plot</span>
           <textarea name="nfo_plot" rows="4" class="input">{{ nfo.plot }}</textarea>
         </label>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <label class="field"><span class="field-label">Collection</span>
-            <input name="nfo_set" value="{{ nfo.set }}" class="input">
-            <span class="hint">Groups it with others in the same collection.</span>
-          </label>
-          <label class="field"><span class="field-label">Sort title</span>
-            <input name="nfo_sort_title" value="{{ nfo.sort_title }}" placeholder="{{ nfo.title }}" class="input">
-            <span class="hint">Sorts by this, but still shows the title.</span>
-          </label>
-        </div>
+        <label class="field"><span class="field-label">Collection</span>
+          <input name="nfo_set" value="{{ nfo.set }}" class="input">
+          <span class="hint">Groups it with others in the same collection.</span>
+        </label>
       </div>
       <div class="flex items-center gap-3 border-t border-base-300 pt-4">
         {% if schedule %}

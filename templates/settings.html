@@ -80,6 +80,23 @@
   </section>
 
   <section class="card p-4">
+    <h2 class="label">.nfo</h2>
+    <p class="-mt-1 mb-3 text-xs text-base-content/45">What media servers show for each recording. Fills in {channel} {title} {description} {date} {time} {year} {month} {day}. Changing these updates the .nfo of recordings subscriptions already have, except ones you edited when downloading.</p>
+    <div class="grid gap-4">
+      <label class="field"><span class="field-label">Title</span>
+        <input name="nfo_title" value="{{ s.nfo_title }}" placeholder="{title}" class="input font-mono text-[12px] sm:text-[12px]">
+      </label>
+      <label class="field"><span class="field-label">Plot</span>
+        <input name="nfo_plot" value="{{ s.nfo_plot }}" placeholder="{description}" class="input font-mono text-[12px] sm:text-[12px]">
+      </label>
+      <label class="field"><span class="field-label">Collection</span>
+        <input name="nfo_set" value="{{ s.nfo_set }}" placeholder="{channel}" class="input font-mono text-[12px] sm:text-[12px]">
+        <span class="hint">Groups recordings into a collection. Leave it empty for none.</span>
+      </label>
+    </div>
+  </section>
+
+  <section class="card p-4">
     <h2 class="label">Checking the guide</h2>
     <div class="grid gap-4 sm:grid-cols-2">
       <label class="field"><span class="field-label">Check every</span>

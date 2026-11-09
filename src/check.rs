@@ -12,7 +12,7 @@ use crate::db::{self, now};
 use crate::download::{NfoChange, sidecar, sync_nfo};
 use crate::jobs::{JobCtx, Jobs, Trigger, Work};
 use crate::plan;
-use crate::recording::{Channel, Program, is_due, is_upcoming, ready_at, ready_at_local};
+use crate::recording::{Channel, Nfo, Program, is_due, is_upcoming, ready_at, ready_at_local};
 use crate::scheduled::{self, EXPIRE_AFTER_SECS};
 use crate::subscriptions::{self, Subscription, channel_name_matches};
 
@@ -115,7 +115,8 @@ pub async fn run(jobs: &Jobs, ctx: &JobCtx) -> Result<()> {
                 let output = download_dir.join(&plan.filename);
                 if output.exists() {
                     result.have += 1;
-                    keep_sidecars_current(jobs, ctx, program, &output, plan.write_nfo, plan.comskip).await?;
+                    let nfo = plan.write_nfo.then(|| Nfo::from_settings(&settings, &channel.name, program));
+                    keep_sidecars_current(jobs, ctx, program, &output, nfo, plan.comskip).await?;
                     continue;
                 }
                 let work = Work::Download { channel: channel.clone(), program: program.clone(), plan, scheduled_id: None };
@@ -201,9 +202,16 @@ async fn guide_for(
 
 /// A recording that's already there still gets its .nfo refreshed, and its .edl if comskip
 /// is on and it doesn't have one yet.
-async fn keep_sidecars_current(jobs: &Jobs, ctx: &JobCtx, program: &Program, output: &Path, nfo: bool, comskip: bool) -> Result<()> {
-    if nfo {
-        match sync_nfo(program, None, output) {
+async fn keep_sidecars_current(
+    jobs: &Jobs,
+    ctx: &JobCtx,
+    program: &Program,
+    output: &Path,
+    nfo: Option<Nfo>,
+    comskip: bool,
+) -> Result<()> {
+    if let Some(nfo) = nfo {
+        match sync_nfo(program, &nfo, false, output) {
             Ok(NfoChange::Created) => ctx.info(format!("Wrote the .nfo for {}", program.title)).await,
             Ok(NfoChange::Updated) => ctx.info(format!("Updated the .nfo for {}", program.title)).await,
             Ok(NfoChange::Unchanged) => {}

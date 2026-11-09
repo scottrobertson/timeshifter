@@ -267,7 +267,6 @@ pub struct PlanForm {
     nfo_title: Option<String>,
     nfo_plot: Option<String>,
     nfo_set: Option<String>,
-    nfo_sort_title: Option<String>,
 }
 
 #[derive(Template)]
@@ -331,23 +330,26 @@ async fn pick(state: &AppState, id: i64, start: i64) -> Result<Picked, Box<Respo
     Ok(Picked { settings, channel, program })
 }
 
-/// The .nfo details as typed, or None when they still say what the guide does.
-fn nfo_from(form: &PlanForm, program: &Program) -> Option<Nfo> {
+/// The .nfo details as typed, or None when they still say what the Settings templates do.
+fn nfo_from(form: &PlanForm, templated: &Nfo) -> Option<Nfo> {
     form.form.as_ref()?;
     // Browsers send line breaks in a textarea as \r\n.
     let plot = |v: &str| v.replace("\r\n", "\n").trim().to_string();
     let typed = Nfo {
-        title: filled(&form.nfo_title).unwrap_or_else(|| program.title.clone()),
-        plot: plot(form.nfo_plot.as_deref().unwrap_or(&program.description)),
+        title: filled(&form.nfo_title).unwrap_or_else(|| templated.title.clone()),
+        plot: plot(form.nfo_plot.as_deref().unwrap_or(&templated.plot)),
         set: filled(&form.nfo_set).unwrap_or_default(),
-        sort_title: filled(&form.nfo_sort_title).unwrap_or_default(),
     };
-    let guide = Nfo { title: program.title.clone(), plot: plot(&program.description), ..Nfo::default() };
-    (typed != guide).then_some(typed)
+    let templated = Nfo { plot: plot(&templated.plot), ..templated.clone() };
+    (typed != templated).then_some(typed)
+}
+
+fn templated_nfo(picked: &Picked) -> Nfo {
+    Nfo::from_settings(&picked.settings, &picked.channel.name, &picked.program)
 }
 
 /// The plan as the form has it, falling back to the defaults for anything not sent.
-fn plan_from(form: &PlanForm, defaults: &Plan, program: &Program) -> Result<Plan, String> {
+fn plan_from(form: &PlanForm, defaults: &Plan, templated: &Nfo) -> Result<Plan, String> {
     let minutes = |value: &Option<String>, fallback: i64| -> Result<i64, String> {
         match filled(value) {
             None => Ok(fallback),
@@ -361,7 +363,7 @@ fn plan_from(form: &PlanForm, defaults: &Plan, program: &Program) -> Result<Plan
         padding_after: minutes(&form.padding_after, defaults.padding_after)?,
         write_nfo: ticked(&form.write_nfo, defaults.write_nfo),
         comskip: ticked(&form.comskip, defaults.comskip),
-        nfo: nfo_from(form, program),
+        nfo: nfo_from(form, templated),
     })
 }
 
@@ -428,7 +430,7 @@ pub async fn plan_page(State(state): AppStateRef, UrlPath(id): UrlPath<i64>, Que
         Err(e) => return error_page(&state, "channels", format!("{e:#}")).await,
     };
     let schedule = wants_schedule(&form, &picked.program);
-    let plan = plan_from(&form, &defaults, &picked.program);
+    let plan = plan_from(&form, &defaults, &templated_nfo(&picked));
     let preview = preview(&state, &picked, &plan, schedule);
     if form.fragment.is_some() {
         return render(preview);
@@ -459,7 +461,7 @@ async fn plan_view(
         start: p.start,
         back_href: format!("/channels/{}{}", picked.channel.stream_id, if schedule { "?view=upcoming" } else { "" }),
         schedule,
-        nfo: plan.nfo.clone().unwrap_or_else(|| Nfo::from_guide(p)),
+        nfo: plan.nfo.clone().unwrap_or_else(|| templated_nfo(&picked)),
         plan,
         preview,
         error,
@@ -478,7 +480,7 @@ pub async fn plan_submit(State(state): AppStateRef, UrlPath(id): UrlPath<i64>, F
         Err(e) => return error_page(&state, "channels", format!("{e:#}")).await,
     };
     let schedule = wants_schedule(&form, &picked.program);
-    let plan = plan_from(&form, &defaults, &picked.program);
+    let plan = plan_from(&form, &defaults, &templated_nfo(&picked));
     let problem = match &plan {
         Err(e) => Some(e.clone()),
         Ok(_) if picked.settings.download_dir.trim().is_empty() => Some("Set a download folder in Settings first".into()),

@@ -171,7 +171,11 @@ pub fn output_filename(channel: &str, program: &Program, template: &str, strip: 
             _ => return None,
         })
     };
+    Ok(fill(template, token))
+}
 
+/// Swaps each {word} for its value. Anything that isn't a known word is left as typed.
+fn fill(template: &str, token: impl Fn(&str) -> Option<String>) -> String {
     let mut out = String::new();
     let mut rest = template;
     while let Some(open) = rest.find('{') {
@@ -191,7 +195,7 @@ pub fn output_filename(channel: &str, program: &Program, template: &str, strip: 
         }
     }
     out.push_str(rest);
-    Ok(out)
+    out
 }
 
 /// The show is in the archive, it finished after the cutoff, and its catchup should be
@@ -247,7 +251,7 @@ fn escape_xml(value: &str) -> String {
 
 /// The .nfo media servers read for the title, plot and air date. It has to be a movie,
 /// because some servers (Silo) ignore a sidecar that doesn't match the library type.
-/// .nfo details typed in for one recording, in place of what the guide says.
+/// What the .nfo says about a recording.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Nfo {
@@ -255,33 +259,44 @@ pub struct Nfo {
     pub plot: String,
     /// The collection media servers group it into.
     pub set: String,
-    pub sort_title: String,
 }
 
 impl Nfo {
-    pub fn from_guide(program: &Program) -> Nfo {
-        Nfo { title: program.title.clone(), plot: program.description.clone(), ..Nfo::default() }
+    /// The details from the .nfo templates in Settings.
+    pub fn from_settings(settings: &Settings, channel: &str, program: &Program) -> Nfo {
+        let at = parse_local(&program.start_local).ok();
+        let when = |format: &str| at.map(|at| at.format(format).to_string()).unwrap_or_default();
+        let token = |key: &str| -> Option<String> {
+            Some(match key {
+                "channel" => channel.to_string(),
+                "title" => program.title.clone(),
+                "description" => program.description.clone(),
+                "date" => when("%Y-%m-%d"),
+                "time" => when("%H:%M"),
+                "year" => when("%Y"),
+                "month" => when("%m"),
+                "day" => when("%d"),
+                _ => return None,
+            })
+        };
+        let tidy = |template: &str| fill(template, token).trim().to_string();
+        Nfo { title: tidy(&settings.nfo_title), plot: tidy(&settings.nfo_plot), set: tidy(&settings.nfo_set) }
     }
 }
 
-/// Marks an .nfo written from details someone typed in, so refreshing it from the guide
-/// later doesn't undo them.
+/// Marks an .nfo written from details someone typed in for that one recording, so
+/// refreshing it from the guide later doesn't undo them.
 pub const NFO_EDITED: &str = "<!-- edited in timeshifter -->";
 
-pub fn build_nfo(program: &Program, edited: Option<&Nfo>, date_added: &str) -> String {
+pub fn build_nfo(program: &Program, nfo: &Nfo, edited: bool, date_added: &str) -> String {
     let premiered: String = program.start_local.chars().take(10).collect();
     let runtime = ((program.end - program.start) as f64 / 60.0).round().max(0.0) as i64;
-    let guide = Nfo::from_guide(program);
-    let nfo = edited.unwrap_or(&guide);
     let mut lines = vec![r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#.to_string()];
-    if edited.is_some() {
+    if edited {
         lines.push(NFO_EDITED.into());
     }
     lines.push("<movie>".into());
     lines.push(format!("  <title>{}</title>", escape_xml(&nfo.title)));
-    if !nfo.sort_title.is_empty() {
-        lines.push(format!("  <sorttitle>{}</sorttitle>", escape_xml(&nfo.sort_title)));
-    }
     lines.push(format!("  <plot>{}</plot>", escape_xml(&nfo.plot)));
     if !nfo.set.is_empty() {
         lines.push(format!("  <set>\n    <name>{}</name>\n  </set>", escape_xml(&nfo.set)));
@@ -472,7 +487,8 @@ pub mod tests {
             start_local: "2024-03-10 21:30:00".into(),
             ..program("Apollo & Soyuz <Live>")
         };
-        let nfo = build_nfo(&p, None, "2024-03-10 22:05:00");
+        let details = Nfo::from_settings(&Settings::default(), "NASA TV", &p);
+        let nfo = build_nfo(&p, &details, false, "2024-03-10 22:05:00");
         assert!(nfo.starts_with(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#));
         assert!(nfo.ends_with("</movie>\n"));
         assert!(nfo.contains("<title>Apollo &amp; Soyuz &lt;Live&gt;</title>"));
@@ -480,23 +496,29 @@ pub mod tests {
         assert!(nfo.contains("<premiered>2024-03-10</premiered>"));
         assert!(nfo.contains("<runtime>60</runtime>"));
         assert!(nfo.contains("<dateadded>2024-03-10 22:05:00</dateadded>"));
-        assert!(!nfo.contains(NFO_EDITED) && !nfo.contains("<set>") && !nfo.contains("<sorttitle>"));
+        assert!(!nfo.contains(NFO_EDITED) && !nfo.contains("<set>"));
     }
 
     #[test]
-    fn nfo_uses_edited_details() {
-        let edited = Nfo {
-            title: "Artemis II".into(),
-            plot: "Crewed lunar flyby.".into(),
-            set: "Artemis".into(),
-            sort_title: "Artemis 2".into(),
+    fn nfo_templates_fill_in() {
+        let settings = Settings {
+            nfo_title: "{title} ({date})".into(),
+            nfo_plot: "{description} On {channel}.".into(),
+            nfo_set: "NASA {year}".into(),
+            ..Settings::default()
         };
-        let nfo = build_nfo(&program("Artemis II Launch LIVE"), Some(&edited), "2024-03-10 22:05:00");
+        let p = Program { description: "Crewed lunar flyby.".into(), ..program("Artemis II Launch") };
+        let details = Nfo::from_settings(&settings, "NASA TV", &p);
+        assert_eq!(
+            details,
+            Nfo {
+                title: "Artemis II Launch (2024-03-10)".into(),
+                plot: "Crewed lunar flyby. On NASA TV.".into(),
+                set: "NASA 2024".into(),
+            }
+        );
+        let nfo = build_nfo(&p, &details, true, "2024-03-10 22:05:00");
         assert!(nfo.contains(NFO_EDITED));
-        assert!(nfo.contains("<title>Artemis II</title>"));
-        assert!(nfo.contains("<sorttitle>Artemis 2</sorttitle>"));
-        assert!(nfo.contains("<plot>Crewed lunar flyby.</plot>"));
-        assert!(nfo.contains("<set>\n    <name>Artemis</name>\n  </set>"));
-        assert!(nfo.contains("<premiered>2024-03-10</premiered>"));
+        assert!(nfo.contains("<set>\n    <name>NASA 2024</name>\n  </set>"));
     }
 }

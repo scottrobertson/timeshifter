@@ -54,7 +54,8 @@ pub async fn run(
         ctx.warn(format!("Couldn't set the file date: {e:#}")).await;
     }
     if plan.write_nfo {
-        match sync_nfo(program, plan.nfo.as_ref(), &output) {
+        let nfo = plan.nfo.clone().unwrap_or_else(|| Nfo::from_settings(&settings, &channel.name, program));
+        match sync_nfo(program, &nfo, plan.nfo.is_some(), &output) {
             Ok(_) => ctx.info("Wrote the .nfo").await,
             Err(e) => ctx.warn(format!("Couldn't write the .nfo: {e:#}")).await,
         }
@@ -197,18 +198,18 @@ pub enum NfoChange {
 
 /// Writes or refreshes a recording's .nfo. Keeps the original dateadded so a refresh
 /// doesn't churn it, and only writes when something changed, so it's cheap on every check.
-/// A refresh from the guide leaves an .nfo with typed in details alone.
-pub fn sync_nfo(program: &Program, edited: Option<&Nfo>, output: &Path) -> Result<NfoChange> {
+/// A refresh from the templates leaves an .nfo with typed in details alone.
+pub fn sync_nfo(program: &Program, nfo: &Nfo, edited: bool, output: &Path) -> Result<NfoChange> {
     let path = sidecar(output, "nfo");
     let existing = std::fs::read_to_string(&path).ok();
-    if edited.is_none() && existing.as_deref().is_some_and(|e| e.contains(NFO_EDITED)) {
+    if !edited && existing.as_deref().is_some_and(|e| e.contains(NFO_EDITED)) {
         return Ok(NfoChange::Unchanged);
     }
     let date_added = existing
         .as_deref()
         .and_then(|e| Some(e.split("<dateadded>").nth(1)?.split("</dateadded>").next()?.to_string()))
         .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
-    let contents = build_nfo(program, edited, &date_added);
+    let contents = build_nfo(program, nfo, edited, &date_added);
     if existing.as_deref() == Some(contents.as_str()) {
         return Ok(NfoChange::Unchanged);
     }
@@ -362,6 +363,7 @@ fn now_nanos() -> u128 {
 mod tests {
     use super::*;
     use crate::recording::tests::program;
+    use crate::settings::Settings;
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
@@ -385,10 +387,14 @@ mod tests {
     fn nfo_is_created_left_alone_then_updated_keeping_dateadded() {
         let dir = tempfile::tempdir().unwrap();
         let ts = dir.path().join("launch.ts");
-        assert_eq!(sync_nfo(&program("Artemis II Launch"), None, &ts).unwrap(), NfoChange::Created);
+        let sync = |title: &str| {
+            let p = program(title);
+            sync_nfo(&p, &Nfo::from_settings(&Settings::default(), "NASA TV", &p), false, &ts).unwrap()
+        };
+        assert_eq!(sync("Artemis II Launch"), NfoChange::Created);
         let first = std::fs::read_to_string(sidecar(&ts, "nfo")).unwrap();
-        assert_eq!(sync_nfo(&program("Artemis II Launch"), None, &ts).unwrap(), NfoChange::Unchanged);
-        assert_eq!(sync_nfo(&program("Artemis III Launch"), None, &ts).unwrap(), NfoChange::Updated);
+        assert_eq!(sync("Artemis II Launch"), NfoChange::Unchanged);
+        assert_eq!(sync("Artemis III Launch"), NfoChange::Updated);
         let second = std::fs::read_to_string(sidecar(&ts, "nfo")).unwrap();
         let added = |s: &str| s.split("<dateadded>").nth(1).unwrap().split('<').next().unwrap().to_string();
         assert_eq!(added(&first), added(&second));
@@ -399,9 +405,11 @@ mod tests {
     fn a_refresh_from_the_guide_keeps_typed_in_details() {
         let dir = tempfile::tempdir().unwrap();
         let ts = dir.path().join("launch.ts");
+        let p = program("Artemis II Launch");
         let edited = Nfo { title: "Artemis II".into(), ..Nfo::default() };
-        assert_eq!(sync_nfo(&program("Artemis II Launch"), Some(&edited), &ts).unwrap(), NfoChange::Created);
-        assert_eq!(sync_nfo(&program("Artemis II Launch"), None, &ts).unwrap(), NfoChange::Unchanged);
+        assert_eq!(sync_nfo(&p, &edited, true, &ts).unwrap(), NfoChange::Created);
+        let from_settings = Nfo::from_settings(&Settings::default(), "NASA TV", &p);
+        assert_eq!(sync_nfo(&p, &from_settings, false, &ts).unwrap(), NfoChange::Unchanged);
         assert!(std::fs::read_to_string(sidecar(&ts, "nfo")).unwrap().contains("<title>Artemis II</title>"));
     }
 

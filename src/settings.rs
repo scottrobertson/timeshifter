@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_FILENAME_TEMPLATE: &str = "{channel} - {title} - {datetime}.{ext}";
+pub const DEFAULT_NFO_TITLE: &str = "{title}";
+pub const DEFAULT_NFO_PLOT: &str = "{description}";
 // Many panels drop connections from clients that don't look like a real player,
 // especially on long downloads.
 pub const DEFAULT_USER_AGENT: &str = "VLC/3.0.18 LibVLC/3.0.18";
@@ -31,6 +33,10 @@ pub struct Settings {
     pub filename_strip: Vec<String>,
     pub set_aired_time: bool,
     pub write_nfo: bool,
+    /// What the .nfo says, filled in like the filename template.
+    pub nfo_title: String,
+    pub nfo_plot: String,
+    pub nfo_set: String,
     pub comskip: bool,
     pub poll_interval_minutes: i64,
     pub ready_grace_minutes: i64,
@@ -51,6 +57,9 @@ impl Default for Settings {
             filename_strip: Vec::new(),
             set_aired_time: true,
             write_nfo: true,
+            nfo_title: DEFAULT_NFO_TITLE.into(),
+            nfo_plot: DEFAULT_NFO_PLOT.into(),
+            nfo_set: String::new(),
             comskip: false,
             poll_interval_minutes: 10,
             ready_grace_minutes: 0,
