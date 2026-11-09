@@ -179,6 +179,7 @@ impl SubForm {
                 write_nfo: switch(&self.write_nfo),
                 comskip: switch(&self.comskip),
                 filename: None,
+                nfo: None,
             },
         };
         subscriptions::validate(&sub).map_err(|e| e.to_string())?;

@@ -150,6 +150,7 @@ pub fn first_run(conn: &mut Connection, config_dir: &Path) -> Result<Vec<String>
                 comskip: old.comskip,
                 filename_template: old.filename_template,
                 filename_strip: old.filename_strip,
+                nfo: None,
             };
             scheduled::insert(
                 &tx,

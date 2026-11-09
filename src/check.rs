@@ -203,7 +203,7 @@ async fn guide_for(
 /// is on and it doesn't have one yet.
 async fn keep_sidecars_current(jobs: &Jobs, ctx: &JobCtx, program: &Program, output: &Path, nfo: bool, comskip: bool) -> Result<()> {
     if nfo {
-        match sync_nfo(program, output) {
+        match sync_nfo(program, None, output) {
             Ok(NfoChange::Created) => ctx.info(format!("Wrote the .nfo for {}", program.title)).await,
             Ok(NfoChange::Updated) => ctx.info(format!("Updated the .nfo for {}", program.title)).await,
             Ok(NfoChange::Unchanged) => {}

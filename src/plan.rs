@@ -4,7 +4,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::recording::{Program, output_filename};
+use crate::recording::{Nfo, Program, output_filename};
 use crate::settings::Settings;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -14,6 +14,9 @@ pub struct Plan {
     pub padding_after: i64,
     pub write_nfo: bool,
     pub comskip: bool,
+    /// .nfo details typed in for this recording. None takes them from the guide.
+    #[serde(default)]
+    pub nfo: Option<Nfo>,
 }
 
 /// What a subscription or scheduled recording saved. Anything left empty follows the
@@ -28,6 +31,7 @@ pub struct Overrides {
     pub comskip: Option<bool>,
     pub filename_template: Option<String>,
     pub filename_strip: Option<Vec<String>>,
+    pub nfo: Option<Nfo>,
 }
 
 pub fn resolve(settings: &Settings, channel: &str, program: &Program, overrides: &Overrides) -> Result<Plan> {
@@ -46,6 +50,7 @@ pub fn resolve(settings: &Settings, channel: &str, program: &Program, overrides:
         padding_after: overrides.padding_after.unwrap_or(settings.padding_after),
         write_nfo: overrides.write_nfo.unwrap_or(settings.write_nfo),
         comskip: overrides.comskip.unwrap_or(settings.comskip),
+        nfo: overrides.nfo.clone(),
     })
 }
 
@@ -61,6 +66,7 @@ pub fn changes(plan: &Plan, defaults: &Plan) -> Overrides {
         padding_after: differs(&plan.padding_after, &defaults.padding_after),
         write_nfo: differs(&plan.write_nfo, &defaults.write_nfo),
         comskip: differs(&plan.comskip, &defaults.comskip),
+        nfo: plan.nfo.clone(),
         ..Overrides::default()
     }
 }

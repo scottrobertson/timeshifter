@@ -12,7 +12,7 @@ use tokio::process::Command;
 use crate::db::now;
 use crate::jobs::{JobCtx, Jobs, Trigger, Work};
 use crate::plan::Plan;
-use crate::recording::{Channel, Program, build_nfo, recording_window, timeshift_url};
+use crate::recording::{Channel, NFO_EDITED, Nfo, Program, build_nfo, recording_window, timeshift_url};
 use crate::scheduled;
 use crate::settings::Settings;
 use crate::xtream;
@@ -54,7 +54,7 @@ pub async fn run(
         ctx.warn(format!("Couldn't set the file date: {e:#}")).await;
     }
     if plan.write_nfo {
-        match sync_nfo(program, &output) {
+        match sync_nfo(program, plan.nfo.as_ref(), &output) {
             Ok(_) => ctx.info("Wrote the .nfo").await,
             Err(e) => ctx.warn(format!("Couldn't write the .nfo: {e:#}")).await,
         }
@@ -197,14 +197,18 @@ pub enum NfoChange {
 
 /// Writes or refreshes a recording's .nfo. Keeps the original dateadded so a refresh
 /// doesn't churn it, and only writes when something changed, so it's cheap on every check.
-pub fn sync_nfo(program: &Program, output: &Path) -> Result<NfoChange> {
+/// A refresh from the guide leaves an .nfo with typed in details alone.
+pub fn sync_nfo(program: &Program, edited: Option<&Nfo>, output: &Path) -> Result<NfoChange> {
     let path = sidecar(output, "nfo");
     let existing = std::fs::read_to_string(&path).ok();
+    if edited.is_none() && existing.as_deref().is_some_and(|e| e.contains(NFO_EDITED)) {
+        return Ok(NfoChange::Unchanged);
+    }
     let date_added = existing
         .as_deref()
         .and_then(|e| Some(e.split("<dateadded>").nth(1)?.split("</dateadded>").next()?.to_string()))
         .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
-    let contents = build_nfo(program, &date_added);
+    let contents = build_nfo(program, edited, &date_added);
     if existing.as_deref() == Some(contents.as_str()) {
         return Ok(NfoChange::Unchanged);
     }
@@ -381,14 +385,24 @@ mod tests {
     fn nfo_is_created_left_alone_then_updated_keeping_dateadded() {
         let dir = tempfile::tempdir().unwrap();
         let ts = dir.path().join("launch.ts");
-        assert_eq!(sync_nfo(&program("Artemis II Launch"), &ts).unwrap(), NfoChange::Created);
+        assert_eq!(sync_nfo(&program("Artemis II Launch"), None, &ts).unwrap(), NfoChange::Created);
         let first = std::fs::read_to_string(sidecar(&ts, "nfo")).unwrap();
-        assert_eq!(sync_nfo(&program("Artemis II Launch"), &ts).unwrap(), NfoChange::Unchanged);
-        assert_eq!(sync_nfo(&program("Artemis III Launch"), &ts).unwrap(), NfoChange::Updated);
+        assert_eq!(sync_nfo(&program("Artemis II Launch"), None, &ts).unwrap(), NfoChange::Unchanged);
+        assert_eq!(sync_nfo(&program("Artemis III Launch"), None, &ts).unwrap(), NfoChange::Updated);
         let second = std::fs::read_to_string(sidecar(&ts, "nfo")).unwrap();
         let added = |s: &str| s.split("<dateadded>").nth(1).unwrap().split('<').next().unwrap().to_string();
         assert_eq!(added(&first), added(&second));
         assert!(second.contains("Artemis III Launch"));
+    }
+
+    #[test]
+    fn a_refresh_from_the_guide_keeps_typed_in_details() {
+        let dir = tempfile::tempdir().unwrap();
+        let ts = dir.path().join("launch.ts");
+        let edited = Nfo { title: "Artemis II".into(), ..Nfo::default() };
+        assert_eq!(sync_nfo(&program("Artemis II Launch"), Some(&edited), &ts).unwrap(), NfoChange::Created);
+        assert_eq!(sync_nfo(&program("Artemis II Launch"), None, &ts).unwrap(), NfoChange::Unchanged);
+        assert!(std::fs::read_to_string(sidecar(&ts, "nfo")).unwrap().contains("<title>Artemis II</title>"));
     }
 
     #[test]
